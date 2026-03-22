@@ -1,4 +1,4 @@
-#  Bilibili Ultimate Downloader | B站超清视频自动化下载器
+#  Bilibili Video Downloader | B站超清视频自动化下载器
 
 > 告别低画质与色彩发灰！专为追求极致画质与完美色彩还原的视频发烧友打造的 B 站全自动视频下载工具。
 
