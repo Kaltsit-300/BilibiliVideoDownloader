@@ -19,7 +19,7 @@
 
 ---
 
-## 🛠️ 安装与配置 (Installation)
+##  安装与配置 (Installation)
 
 ### 1. 环境依赖
 请确保您的电脑已安装 Python 3.7 或更高版本。打开命令行 (CMD) 或终端 (Terminal)，安装必备的第三方库：
