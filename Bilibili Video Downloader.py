@@ -420,9 +420,13 @@ def download_bilibili_video(url, cookie_str="", output_dir=None, logger=None):
         'cookie': cookie_str
     }
 
+    if not re.match(r"^https?://", url) or "bilibili.com/video/" not in url:
+        emit("链接格式不正确，请粘贴完整的 B站视频链接（例如 https://www.bilibili.com/video/BV...）。")
+        return False
+
     emit("\n正在解析网页，提取视频数据...")
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=20)
         response.encoding = 'utf-8'
         html_data = response.text
     except Exception as e:
@@ -438,16 +442,67 @@ def download_bilibili_video(url, cookie_str="", output_dir=None, logger=None):
         title = "未命名视频"
     emit(f"成功抓取视频标题：【{title}】")
 
-    # 2. 提取并解析 JSON 数据
-    playinfo_match = re.search(r'window\.__playinfo__=(.*?)</script>', html_data)
-    if not playinfo_match:
-        emit("解析失败，找不到视频源流数据，请检查链接。")
+    # 2. 提取 bvid/cid，并调用官方 playurl 接口请求最高可用画质
+    bvid_match = re.search(r"/video/(BV[0-9A-Za-z]+)", url)
+    if not bvid_match:
+        bvid_match = re.search(r'"bvid":"(BV[0-9A-Za-z]+)"', html_data)
+    if not bvid_match:
+        emit("解析失败，无法识别 BVID。请确认链接是普通视频页。")
+        return False
+    bvid = bvid_match.group(1)
+
+    cid = None
+    state_match = re.search(r'window\.__INITIAL_STATE__=(.*?);\(function', html_data)
+    if state_match:
+        try:
+            initial_state = json.loads(state_match.group(1))
+            video_data = initial_state.get("videoData", {})
+            cid = video_data.get("cid")
+            if not cid:
+                pages = video_data.get("pages", [])
+                if pages:
+                    cid = pages[0].get("cid")
+        except Exception:
+            cid = None
+
+    if not cid:
+        cid_match = re.search(r'"cid":(\d+)', html_data)
+        if cid_match:
+            cid = int(cid_match.group(1))
+
+    if not cid:
+        emit("解析失败，无法识别 CID。")
         return False
 
-    playinfo_json = json.loads(playinfo_match.group(1))
+    playurl_api = "https://api.bilibili.com/x/player/playurl"
+    play_params = {
+        "bvid": bvid,
+        "cid": cid,
+        "qn": 127,       # 尽量请求最高画质
+        "fnval": 4048,   # 支持 DASH / HDR / 4K / 8K 等组合
+        "fourk": 1
+    }
+    try:
+        play_resp = requests.get(playurl_api, params=play_params, headers=headers, timeout=20)
+        play_json = play_resp.json()
+    except Exception as e:
+        emit(f"请求播放接口失败: {e}")
+        return False
+
+    if play_json.get("code") != 0:
+        emit(f"播放接口返回失败: code={play_json.get('code')}, message={play_json.get('message')}")
+        return False
+    accept_quality = play_json.get("data", {}).get("accept_quality", [])
+    if accept_quality:
+        emit(f"账号可用画质档位ID: {accept_quality}")
 
     try:
-        video_list = playinfo_json['data']['dash']['video']
+        dash_data = play_json.get("data", {}).get("dash", {})
+        video_list = dash_data.get('video', [])
+        audio_list = dash_data.get('audio', [])
+        if not video_list or not audio_list:
+            emit("未拿到 DASH 音视频流，可能视频受限、链接无效或账号权限不足。")
+            return False
 
         # 将视频流按编码格式分类 (B站规则: 12=HEVC, 13=AV1, 7=AVC)
         hevc_list = [v for v in video_list if v.get('codecid') == 12]
@@ -470,13 +525,15 @@ def download_bilibili_video(url, cookie_str="", output_dir=None, logger=None):
 
         # 在选定的编码流中，挑选最高画质（根据 id 和 码率带宽 排序）
         best_video = sorted(target_video_list, key=lambda x: (x['id'], x['bandwidth']), reverse=True)[0]
-        video_url = best_video['baseUrl']
+        video_url = best_video.get('baseUrl') or best_video.get('base_url')
         video_id = best_video['id']
 
         # 挑选最高音质
-        audio_list = playinfo_json['data']['dash']['audio']
         best_audio = sorted(audio_list, key=lambda x: x['id'], reverse=True)[0]
-        audio_url = best_audio['baseUrl']
+        audio_url = best_audio.get('baseUrl') or best_audio.get('base_url')
+        if not video_url or not audio_url:
+            emit("解析失败：未拿到可用的音视频下载地址。")
+            return False
 
         # 打印画质与编码信息
         quality_map = {127: "8K", 120: "4K", 116: "1080P 60帧", 112: "1080P 高码率", 80: "1080P", 74: "720P 60帧",
@@ -536,35 +593,87 @@ def download_bilibili_video(url, cookie_str="", output_dir=None, logger=None):
 def launch_gui():
     root = tk.Tk()
     root.title("B站视频下载器")
-    root.geometry("820x560")
-    root.minsize(760, 520)
+    root.geometry("980x680")
+    root.minsize(900, 620)
+    root.configure(bg="#0f172a")
 
     state = {"cookie": ""}
     default_dir = os.path.join(os.path.expanduser("~"), "Desktop")
     url_pattern = re.compile(r"https?://[^\s]+")
     link_counter = {"n": 0}
+    font_family = "Microsoft YaHei UI"
+    colors = {
+        "bg": "#0f172a",
+        "card": "#111827",
+        "card_soft": "#1f2937",
+        "text": "#e5e7eb",
+        "muted": "#94a3b8",
+        "accent": "#f97316",
+        "accent_hover": "#ea580c",
+        "ok": "#22c55e",
+        "warn": "#f59e0b",
+        "input_bg": "#0b1220",
+        "input_fg": "#f8fafc",
+    }
 
     cookie_status_var = tk.StringVar(value="Cookie 状态：未获取")
     folder_var = tk.StringVar(value=default_dir)
     url_var = tk.StringVar(value="")
 
-    top_frame = tk.Frame(root, padx=12, pady=12)
-    top_frame.pack(fill="x")
+    shell = tk.Frame(root, bg=colors["bg"], padx=20, pady=20)
+    shell.pack(fill="both", expand=True)
 
-    tk.Label(top_frame, text="B站视频链接：").grid(row=0, column=0, sticky="w")
-    url_entry = tk.Entry(top_frame, textvariable=url_var, width=90)
-    url_entry.grid(row=0, column=1, columnspan=3, sticky="we", padx=(8, 0))
+    header = tk.Frame(shell, bg=colors["bg"])
+    header.pack(fill="x", pady=(0, 14))
+    tk.Label(
+        header,
+        text="Bilibili Video Downloader",
+        bg=colors["bg"],
+        fg=colors["text"],
+        font=(font_family, 19, "bold")
+    ).pack(anchor="w")
+    tk.Label(
+        header,
+        text="高质量下载 / Cookie 自动获取 / 一键保存",
+        bg=colors["bg"],
+        fg=colors["muted"],
+        font=(font_family, 10)
+    ).pack(anchor="w", pady=(2, 0))
 
-    tk.Label(top_frame, text="下载目录：").grid(row=1, column=0, sticky="w", pady=(10, 0))
-    folder_entry = tk.Entry(top_frame, textvariable=folder_var, width=70)
-    folder_entry.grid(row=1, column=1, sticky="we", padx=(8, 8), pady=(10, 0))
+    form_card = tk.Frame(shell, bg=colors["card"], padx=16, pady=16, highlightthickness=1, highlightbackground="#243047")
+    form_card.pack(fill="x")
+
+    tk.Label(form_card, text="视频链接", bg=colors["card"], fg=colors["text"], font=(font_family, 11, "bold")).grid(row=0, column=0, sticky="w")
+    url_entry = tk.Entry(
+        form_card, textvariable=url_var, width=80,
+        bg=colors["input_bg"], fg=colors["input_fg"], insertbackground=colors["input_fg"],
+        relief="flat", font=(font_family, 11)
+    )
+    url_entry.grid(row=1, column=0, columnspan=4, sticky="we", pady=(6, 12), ipady=7)
+
+    tk.Label(form_card, text="下载目录", bg=colors["card"], fg=colors["text"], font=(font_family, 11, "bold")).grid(row=2, column=0, sticky="w")
+    folder_entry = tk.Entry(
+        form_card, textvariable=folder_var, width=70,
+        bg=colors["input_bg"], fg=colors["input_fg"], insertbackground=colors["input_fg"],
+        relief="flat", font=(font_family, 10)
+    )
+    folder_entry.grid(row=3, column=0, columnspan=2, sticky="we", pady=(6, 0), ipady=7)
 
     def choose_folder():
         selected = filedialog.askdirectory(initialdir=folder_var.get() or default_dir)
         if selected:
             folder_var.set(selected)
 
-    tk.Button(top_frame, text="选择文件夹", command=choose_folder, width=12).grid(row=1, column=2, pady=(10, 0))
+    def style_button(btn, is_primary=False):
+        normal_bg = colors["accent"] if is_primary else colors["card_soft"]
+        hover_bg = colors["accent_hover"] if is_primary else "#374151"
+        btn.configure(
+            bg=normal_bg, fg="#ffffff", relief="flat",
+            activebackground=hover_bg, activeforeground="#ffffff",
+            cursor="hand2", font=(font_family, 10, "bold"), padx=14, pady=8, bd=0
+        )
+        btn.bind("<Enter>", lambda _e: btn.configure(bg=hover_bg))
+        btn.bind("<Leave>", lambda _e: btn.configure(bg=normal_bg))
 
     def append_log(msg):
         def _write():
@@ -639,14 +748,29 @@ def launch_gui():
         cookie_btn.config(state="disabled")
         threading.Thread(target=get_cookie_worker, daemon=True).start()
 
-    cookie_btn = tk.Button(top_frame, text="获取 Cookie", command=get_cookie_action, width=12)
-    cookie_btn.grid(row=1, column=3, padx=(8, 0), pady=(10, 0))
+    folder_btn = tk.Button(form_card, text="选择文件夹", command=choose_folder, width=12)
+    folder_btn.grid(row=3, column=2, padx=(10, 8), sticky="we")
+    style_button(folder_btn, is_primary=False)
 
-    status_frame = tk.Frame(root, padx=12)
+    cookie_btn = tk.Button(form_card, text="获取 Cookie", command=get_cookie_action, width=12)
+    cookie_btn.grid(row=3, column=3, sticky="we")
+    style_button(cookie_btn, is_primary=False)
+
+    form_card.grid_columnconfigure(0, weight=1)
+    form_card.grid_columnconfigure(1, weight=2)
+
+    status_frame = tk.Frame(shell, bg=colors["bg"], pady=10)
     status_frame.pack(fill="x")
-    tk.Label(status_frame, textvariable=cookie_status_var, anchor="w", fg="#1f6f43").pack(fill="x", pady=(2, 8))
+    tk.Label(
+        status_frame,
+        textvariable=cookie_status_var,
+        anchor="w",
+        bg=colors["bg"],
+        fg=colors["ok"],
+        font=(font_family, 10, "bold")
+    ).pack(fill="x")
 
-    action_frame = tk.Frame(root, padx=12, pady=4)
+    action_frame = tk.Frame(shell, bg=colors["bg"], pady=4)
     action_frame.pack(fill="x")
 
     def download_worker(video_url, out_dir, cookie):
@@ -676,17 +800,22 @@ def launch_gui():
         download_btn.config(state="disabled")
         threading.Thread(target=download_worker, args=(video_url, out_dir, state["cookie"]), daemon=True).start()
 
-    download_btn = tk.Button(action_frame, text="开始下载", command=start_download, width=14)
+    download_btn = tk.Button(action_frame, text="开始下载", command=start_download, width=16)
+    style_button(download_btn, is_primary=True)
     download_btn.pack(anchor="w")
 
-    log_frame = tk.Frame(root, padx=12, pady=8)
+    log_frame = tk.Frame(shell, bg=colors["card"], padx=14, pady=12, highlightthickness=1, highlightbackground="#243047")
     log_frame.pack(fill="both", expand=True)
-    tk.Label(log_frame, text="运行日志：").pack(anchor="w")
-    log_text = ScrolledText(log_frame, height=18, wrap="word", state="disabled")
+    tk.Label(log_frame, text="运行日志", bg=colors["card"], fg=colors["text"], font=(font_family, 11, "bold")).pack(anchor="w")
+    log_text = ScrolledText(
+        log_frame, height=18, wrap="word", state="disabled",
+        bg="#090f1a", fg="#d1d5db", insertbackground="#d1d5db", relief="flat",
+        font=("Consolas", 10)
+    )
     log_text.pack(fill="both", expand=True, pady=(6, 0))
-    log_text.tag_configure("hyperlink", foreground="#0066cc", underline=True)
+    log_text.tag_configure("hyperlink", foreground="#60a5fa", underline=True)
     log_text.tag_bind("hyperlink", "<Enter>", lambda _e: log_text.config(cursor="hand2"))
-    log_text.tag_bind("hyperlink", "<Leave>", lambda _e: log_text.config(cursor="xterm"))
+    log_text.tag_bind("hyperlink", "<Leave>", lambda _e: log_text.config(cursor="arrow"))
 
     append_log("界面已就绪。建议先点击“获取 Cookie”，再开始下载。")
     append_log("若 Cookie 获取失败，可使用管理员模式启动本程序后重试。")
