@@ -1,130 +1,154 @@
 # B站视频下载器 (Bilibili Video Downloader)
 
-一个功能强大的B站视频下载工具，支持图形界面操作，自动获取Cookie，智能选择最高画质。
+一个现代化的 B站视频下载工具，支持图形界面操作、扫码登录、智能画质选择。
+
+![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
+![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 ## ✨ 主要特性
 
-- 🖼️ **图形界面** - 现代化的GUI操作界面，简单易用
-- 🔐 **智能Cookie获取** - 自动从浏览器获取B站登录Cookie
-- 🎯 **最高画质下载** - 智能选择HEVC/AV1/AVC编码，支持8K/4K/1080P
-- 🔄 **多线程下载** - 界面不卡顿，实时显示进度
-- 📁 **自定义保存路径** - 支持选择任意下载目录
-- 🛡️ **管理员权限支持** - 自动检测并提示权限提升
-- 📊 **详细日志记录** - 完整的运行日志和错误提示
+- 🎨 **现代化深色 UI** - 精心设计的深色主题界面，科技感十足
+- 📱 **扫码登录** - 弹出二维码，用 B站 App 扫码即可获取 Cookie
+- 💾 **本地缓存** - Cookie 自动缓存到本地，下次启动直接可用
+- 🎯 **最高画质** - 智能选择 HEVC/AV1/AVC 编码，支持 8K/4K/1080P+
+- 🔄 **多线程下载** - 界面不卡顿，实时显示进度日志
+- 🔗 **日志超链接** - 日志中的 URL 可点击直接打开
 
-## 📦 依赖环境
+## 📦 安装
 
 ### 系统要求
-- Windows 10/11 (推荐)
-- Python 3.8+
+- Windows 10/11
+- Python 3.8+（推荐 3.14）
 
-### Python依赖
+### 安装依赖
 ```bash
 pip install -r requirements.txt
+```
+
+或使用国内镜像加速：
+```bash
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
 ## 🚀 快速开始
 
-### 1. 安装依赖
-```bash
-pip install -r requirements.txt
-```
-
-### 2. 运行程序
+### 运行程序
 ```bash
 python "Bilibili Video Downloader.py"
 ```
 
-### 3. 使用步骤
-1. 启动程序后，点击"获取 Cookie"按钮
-2. 选择下载保存目录
-3. 粘贴B站视频链接
-4. 点击"开始下载"
+### 使用步骤
+1. **获取 Cookie** - 点击「获取 Cookie」按钮
+   - 程序会自动弹出二维码窗口
+   - 用 B站 App 扫码登录
+   - Cookie 会自动缓存到本地
+   
+2. **填写链接** - 粘贴 B站视频链接（支持 BV号/短链接/完整URL）
+   
+3. **选择目录** - 点击「选择文件夹」选择保存位置
+   
+4. **开始下载** - 点击「开始下载」
 
-## 🔧 详细功能说明
+## 🔧 技术说明
 
-### Cookie自动获取机制
-程序采用三层Cookie获取方案，确保高成功率：
+### Cookie 获取方案
 
-**第一层：通用浏览器接口**
-- 自动检测已安装的浏览器
-- 支持：Chrome、Edge、Brave、Firefox、Opera
-- 自动安装 `browser-cookie3` 依赖库
+程序采用两层 Cookie 获取策略：
 
-**第二层：本地数据库兜底**
-- 直接读取浏览器Cookie数据库
-- 支持：Edge、Chrome、Brave、360浏览器、QQ浏览器、搜狗浏览器
-- 自动解密加密的Cookie数据
+| 优先级 | 方案 | 说明 |
+|--------|------|------|
+| 1 | 本地缓存 | 扫码成功后自动保存，下次启动直接加载 |
+| 2 | 扫码登录 | 弹出二维码，用 B站 App 扫码授权 |
 
-**第三层：二维码登录兜底**
-- 通过B站官方二维码登录
-- 不依赖本地浏览器权限
+> ⚠️ **注意**：由于 Edge/Chrome v127+ 引入了 App-Bound Encryption (v20) 加密机制，浏览器 Cookie 自动提取方案已不可行，因此移除了该功能。扫码登录是目前最可靠的方式。
 
 ### 画质选择策略
+
 程序智能选择最优视频流：
-- **编码优先级**：HEVC (H.265) > AV1 > AVC (H.264)
-- **画质支持**：8K、4K、1080P 60帧、1080P高码率、720P等
-- **自动检测**：根据Cookie权限自动选择可用最高画质
 
-### 管理员权限
-- 自动检测是否需要管理员权限
-- 支持UAC提权请求
-- 在权限不足时提供友好提示
+```
+编码优先级: HEVC (H.265) > AV1 > AVC (H.264)
+画质支持:   8K → 4K → 1080P60 → 1080P+ → 1080P → 720P
+```
 
-## 🎯 使用技巧
+HEVC 编码画质更好、文件更小，是默认首选。
 
-### 获取更高画质
-1. **保持浏览器登录**：确保在浏览器中已登录B站账号
-2. **使用管理员模式**：以管理员身份运行程序提高成功率
-3. **优先使用Edge/Chrome**：对这两种浏览器支持最好
+### Dolby Vision 视频
 
-### 常见问题解决
+部分 B站视频采用 Dolby Vision HDR 编码（标题通常含"杜比全景声"），在部分播放器中可能出现颜色问题：
+- **PotPlayer**: 深色背景可能发灰 → 切换渲染器为 Direct3D 11
+- **VLC/系统播放器**: 正常显示
 
-**Q: 下载的画质只有480P或更低？**
-A: 这通常是因为Cookie获取失败或权限不足。请尝试：
-- 以管理员身份重新运行程序
-- 确保浏览器中已登录B站
-- 重新点击"获取 Cookie"按钮
+## 🎨 UI 设计
 
-**Q: 程序无法启动或依赖安装失败？**
-A: 请检查：
-- Python版本是否为3.8+
-- 网络连接是否正常
-- 尝试使用国内镜像源安装：
-  ```bash
-  pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
-  ```
+程序采用现代深色主题设计：
 
-**Q: Cookie获取失败怎么办？**
-A: 可以尝试：
-1. 手动在浏览器中登录B站
-2. 关闭浏览器后重新运行程序
-3. 使用管理员模式启动
+| 元素 | 颜色 |
+|------|------|
+| 背景 | `#0f172a` 深邃蓝 |
+| 卡片 | `#111827` 暗灰 |
+| 强调色 | `#f97316` 活力橙 |
+| 成功状态 | `#22c55e` 绿色 |
+| 日志背景 | `#090f1a` 深黑 |
+
+特性：
+- 按钮悬停变色效果
+- 日志区 URL 可点击跳转
+- Cookie 状态实时显示
 
 ## 📁 项目结构
 
 ```
 BilibiliVideoDownloader/
-├── Bilibili Video Downloader.py  # 主程序文件
-├── requirements.txt              # 依赖库列表
-└── README.md                     # 项目说明文档
+├── Bilibili Video Downloader.py  # 主程序 (~700行)
+├── requirements.txt              # 依赖列表
+├── .gitignore                    # Git忽略配置
+└── README.md                     # 项目说明
 ```
+
+## 🛠️ 依赖库
+
+```
+requests        - HTTP请求
+moviepy         - 音视频合成
+pycryptodome    - 加密解密（可选）
+browser-cookie3 - 浏览器Cookie（可选，已移除使用）
+```
+
+## ❓ 常见问题
+
+**Q: 为什么没有自动从浏览器获取 Cookie？**
+A: Edge/Chrome v127+ 使用了 App-Bound Encryption 加密 Cookie，第三方程序无法解密。扫码登录是更可靠的方案。
+
+**Q: 扫码后 Cookie 会过期吗？**
+A: B站 Cookie 通常有效期为 30 天。过期后重新扫码即可。
+
+**Q: 下载的视频播放有问题？**
+A: 
+- 尝试使用 VLC 或 PotPlayer 播放
+- PotPlayer 若显示发灰，切换渲染器为 Direct3D 11
+- 确保安装了最新版解码器
+
+**Q: 程序无法启动？**
+A: 
+- 检查 Python 版本是否 3.8+
+- 重新安装依赖: `pip install -r requirements.txt --force-reinstall`
 
 ## 🔒 安全说明
 
-- 程序仅在本地运行，不会上传任何数据
-- Cookie信息仅用于视频下载，不会存储或传输
-- 支持Windows DPAPI加密解密，确保数据安全
-- 自动清理临时文件，保护隐私
+- Cookie 仅保存在本地 `.bili_cookie_cache` 文件
+- 不会上传任何数据到第三方服务器
+- 扫码登录使用 B站官方接口
 
 ## 📄 许可证
 
-本项目仅供学习和研究使用，请遵守B站的相关服务条款。
-
-## 🤝 贡献
-
-欢迎提交Issue和Pull Request来改进这个项目。
+MIT License - 仅供学习研究使用
 
 ## ⚠️ 免责声明
 
-本工具仅供个人学习和技术研究使用，请勿用于商业用途或侵犯版权。使用者应遵守相关法律法规和网站服务条款，因使用本工具产生的任何问题由使用者自行承担。
+本工具仅供个人学习和技术研究使用，请勿用于商业用途或侵犯版权。使用者应遵守 B站服务条款和相关法律法规。
+
+---
+
+Made with ❤️ by [Kaltsit-300](https://github.com/Kaltsit-300)
