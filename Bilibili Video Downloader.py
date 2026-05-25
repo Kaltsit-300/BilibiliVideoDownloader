@@ -925,7 +925,7 @@ def launch_gui():
     # ---- Two-column content ----
     content = tk.Frame(shell, bg=colors["bg"])
     content.pack(fill="both", expand=True)
-    left_col = tk.Frame(content, bg=colors["bg"], width=470)
+    left_col = tk.Frame(content, bg=colors["bg"], width=500)
     left_col.pack(side="left", fill="both", padx=(0, 18))
     left_col.pack_propagate(False)
     right_col = tk.Frame(content, bg=colors["bg"])
@@ -983,7 +983,7 @@ def launch_gui():
 
     action_bar = tk.Frame(selector_card, bg=colors["panel"])
     action_bar.pack(fill="x", pady=(12, 0))
-    download_btn = create_modern_button(action_bar, "下载选中视频", None, is_primary=True, width=16)
+    download_btn = create_modern_button(action_bar, "⬇ 下载选中视频", None, is_primary=True, width=18)
     download_btn.pack(side="left")
     clear_btn = create_modern_button(action_bar, "清除缓存", None, is_danger=True, width=11)
     clear_btn.pack(side="left", padx=(8, 0))
@@ -999,6 +999,8 @@ def launch_gui():
         selectforeground="#ffffff", relief="flat", font=mono_font, highlightthickness=0
     )
     task_listbox.pack(side="left", fill="x", expand=True, padx=(10, 0), pady=10)
+    task_listbox.insert("end", "  ← 选择视频后，点击「⬇ 下载选中视频」或「⬇ 开始下载」")
+    task_listbox.itemconfigure(0, fg=colors["dim"])
     task_scrollbar = tk.Scrollbar(task_body, orient="vertical", command=task_listbox.yview)
     task_scrollbar.pack(side="right", fill="y")
     task_listbox.configure(yscrollcommand=task_scrollbar.set)
@@ -1007,11 +1009,13 @@ def launch_gui():
 
     task_buttons = tk.Frame(task_card, bg=colors["panel"])
     task_buttons.pack(fill="x", pady=(12, 0))
-    pause_btn = create_modern_button(task_buttons, "暂停", None, width=9)
-    pause_btn.pack(side="left")
-    resume_btn = create_modern_button(task_buttons, "继续", None, width=9)
+    task_download_btn = create_modern_button(task_buttons, "⬇ 开始下载", None, is_primary=True, width=13)
+    task_download_btn.pack(side="left")
+    pause_btn = create_modern_button(task_buttons, "暂停", None, width=8)
+    pause_btn.pack(side="left", padx=(8, 0))
+    resume_btn = create_modern_button(task_buttons, "继续", None, width=8)
     resume_btn.pack(side="left", padx=(8, 0))
-    cancel_btn = create_modern_button(task_buttons, "取消", None, is_danger=True, width=9)
+    cancel_btn = create_modern_button(task_buttons, "取消", None, is_danger=True, width=8)
     cancel_btn.pack(side="left", padx=(8, 0))
 
     log_card = create_section(right_col, "运行日志", "日志区内滚动不会带动页面")
@@ -1193,6 +1197,11 @@ def launch_gui():
         if not task:
             return
         order = state["task_order"]
+        # 首次添加任务时，清除占位提示
+        if not order and task_listbox.size() == 1:
+            first_text = task_listbox.get(0)
+            if "选择视频后" in first_text:
+                task_listbox.delete(0)
         if task_id not in order:
             order.append(task_id)
             task_listbox.insert("end", task_line(task))
@@ -1350,9 +1359,10 @@ def launch_gui():
         append_log(f"已启动 {len(selected_options)} 个下载任务。", "success")
 
     download_btn.configure(command=start_download)
+    task_download_btn.configure(command=start_download)
 
-    append_log("界面已就绪。合集或分P视频请先点击「解析列表」，按住 Ctrl 可多选条目并行下载。")
-    append_log("提示：若 Dolby Vision/HDR 视频在 PotPlayer 中发灰，请切换渲染器为「内置 Direct3D 11 渲染器」。")
+    append_log("界面已就绪。合集或分P视频请先点击「解析列表」，选择后点击「⬇ 下载选中视频」或右侧「⬇ 开始下载」即可。")
+    append_log("提示：按住 Ctrl 可多选条目并行下载。若 Dolby Vision/HDR 发灰，请切换播放器渲染器。")
 
     root.mainloop()
 
