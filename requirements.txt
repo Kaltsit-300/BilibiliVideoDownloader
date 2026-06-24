@@ -2,3 +2,4 @@ requests>=2.32.0
 moviepy>=2.2.1
 pycryptodome>=3.20.0
 browser-cookie3>=0.20.1
+customtkinter>=5.2.2

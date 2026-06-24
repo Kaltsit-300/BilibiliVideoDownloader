@@ -11,6 +11,7 @@ import time
 import sys
 import threading
 import uuid
+import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox, Toplevel
 from tkinter.scrolledtext import ScrolledText
@@ -748,182 +749,77 @@ def download_bilibili_video(
 
 
 # ============================================================
-# GUI 界面
+# GUI 界面（CustomTkinter 重构版）
 # ============================================================
 
 def launch_gui():
-    root = tk.Tk()
+    ctk.set_appearance_mode("dark")
+    ctk.set_default_color_theme("blue")
+
+    root = ctk.CTk()
     root.title("Bilibili Video Downloader")
-    root.geometry("1180x820")
-    root.minsize(960, 680)
+    root.geometry("1100x780")
+    root.minsize(900, 680)
 
     state = {"cookie": "", "video_options": [], "parsed_url": "", "tasks": {}, "task_order": []}
     default_dir = os.path.join(os.path.expanduser("~"), "Desktop")
     url_pattern = re.compile(r"https?://[^\s]+")
-    link_counter = {"n": 0}
-    font_family = "Microsoft YaHei UI"
-    mono_font = ("Consolas", 10)
 
-    colors = {
-        "bg": "#f4f1ea",
-        "panel": "#ffffff",
-        "panel_alt": "#f8f6f1",
-        "line": "#ded6c9",
-        "line_strong": "#c8bca9",
-        "text": "#24211d",
-        "muted": "#746b5f",
-        "dim": "#9a9185",
-        "accent": "#0a9fb5",
-        "accent_hover": "#087f91",
-        "accent_soft": "#dff5f7",
-        "success": "#168a4a",
-        "warning": "#b7791f",
-        "danger": "#d83a34",
-        "danger_hover": "#b62d29",
-        "input_bg": "#fbfaf7",
-        "input_fg": "#24211d",
-        "log_bg": "#1f211f",
-        "log_text": "#e8e2d8",
-    }
+    # Variables
+    cookie_status_var = ctk.StringVar(value="Cookie 未获取")
+    url_var = ctk.StringVar(value="")
+    folder_var = ctk.StringVar(value=default_dir)
+    task_count_var = ctk.StringVar(value="准备就绪")
 
-    cookie_status_var = tk.StringVar(value="Cookie 未获取")
-    folder_var = tk.StringVar(value=default_dir)
-    url_var = tk.StringVar(value="")
-    selected_video_var = tk.StringVar(value="未解析列表，将按当前链接下载。按住 Ctrl 可多选视频。")
-
-    root.configure(bg=colors["bg"])
-
-    # ---- Scrollable page shell ----
-    page_canvas = tk.Canvas(root, bg=colors["bg"], highlightthickness=0)
-    page_scrollbar = tk.Scrollbar(root, orient="vertical", command=page_canvas.yview)
-    page_canvas.configure(yscrollcommand=page_scrollbar.set)
-    page_canvas.pack(side="left", fill="both", expand=True)
-    page_scrollbar.pack(side="right", fill="y")
-
-    page = tk.Frame(page_canvas, bg=colors["bg"])
-    page_window = page_canvas.create_window((0, 0), window=page, anchor="nw")
-
-    def wheel_units(event):
-        if event.delta:
-            return int(-1 * (event.delta / 120))
-        return 0
-
-    def scroll_page(event):
-        units = wheel_units(event)
-        if units:
-            page_canvas.yview_scroll(units, "units")
-        return "break"
-
-    def bind_local_scroll(widget, target):
-        def _scroll(event):
-            units = wheel_units(event)
-            if units:
-                target.yview_scroll(units, "units")
-            return "break"
-        widget.bind("<MouseWheel>", _scroll)
-
-    def _sync_scroll_region(_event=None):
-        page_canvas.configure(scrollregion=page_canvas.bbox("all"))
-
-    def _sync_page_width(event):
-        page_canvas.itemconfigure(page_window, width=event.width)
-
-    page.bind("<Configure>", _sync_scroll_region)
-    page_canvas.bind("<Configure>", _sync_page_width)
-    root.bind_all("<MouseWheel>", scroll_page)
-
-    shell = tk.Frame(page, bg=colors["bg"], padx=28, pady=24)
-    shell.pack(fill="both", expand=True)
-
-    def create_section(parent, title, subtitle=None):
-        card = tk.Frame(parent, bg=colors["panel"], padx=18, pady=16,
-                        highlightthickness=1, highlightbackground=colors["line"])
-        card.pack(fill="x", pady=(0, 16))
-        header = tk.Frame(card, bg=colors["panel"])
-        header.pack(fill="x", pady=(0, 12))
-        tk.Label(
-            header, text=title, bg=colors["panel"], fg=colors["text"],
-            font=(font_family, 13, "bold"), anchor="w"
-        ).pack(side="left")
-        if subtitle:
-            tk.Label(
-                header, text=subtitle, bg=colors["panel"], fg=colors["muted"],
-                font=(font_family, 9), anchor="e"
-            ).pack(side="right")
-        return card
-
-    def make_entry(parent, variable, font_size=10):
-        return tk.Entry(
-            parent, textvariable=variable,
-            bg=colors["input_bg"], fg=colors["input_fg"],
-            insertbackground=colors["input_fg"], relief="flat",
-            font=(font_family, font_size), bd=0,
-            highlightthickness=1, highlightcolor=colors["accent"],
-            highlightbackground=colors["line_strong"]
-        )
-
-    def create_modern_button(parent, text, command, is_primary=False, is_danger=False, width=None):
-        if is_primary:
-            normal_bg, hover_bg, fg = colors["accent"], colors["accent_hover"], "#ffffff"
-        elif is_danger:
-            normal_bg, hover_bg, fg = colors["danger"], colors["danger_hover"], "#ffffff"
-        else:
-            normal_bg, hover_bg, fg = colors["panel_alt"], "#ebe5dc", colors["text"]
-
-        btn = tk.Button(
-            parent, text=text, command=command,
-            bg=normal_bg, fg=fg, relief="flat",
-            activebackground=hover_bg, activeforeground=fg,
-            cursor="hand2", font=(font_family, 10, "bold"),
-            padx=14, pady=8, bd=0, width=width
-        )
-        btn.bind("<Enter>", lambda _e, b=btn, h=hover_bg: b.configure(bg=h))
-        btn.bind("<Leave>", lambda _e, b=btn, n=normal_bg: b.configure(bg=n))
-        return btn
-
-    def labeled_block(parent, label_text):
-        block = tk.Frame(parent, bg=colors["panel"])
-        block.pack(fill="x", pady=(0, 12))
-        tk.Label(
-            block, text=label_text, bg=colors["panel"], fg=colors["muted"],
-            font=(font_family, 9, "bold"), anchor="w"
-        ).pack(fill="x", pady=(0, 5))
-        return block
+    # Color scheme - B站 inspired
+    BILI_BLUE = "#00A1D6"
+    BILI_PINK = "#FB7299"
+    
+    # ============================================================
+    # Layout
+    # ============================================================
+    
+    # Main container
+    main_frame = ctk.CTkFrame(root, fg_color="transparent")
+    main_frame.pack(fill="both", expand=True, padx=20, pady=(16, 12))
 
     # ---- Header ----
-    header = tk.Frame(shell, bg=colors["bg"])
-    header.pack(fill="x", pady=(0, 18))
-    title_area = tk.Frame(header, bg=colors["bg"])
-    title_area.pack(side="left", fill="x", expand=True)
-    tk.Label(
-        title_area, text="Bilibili Video Downloader", bg=colors["bg"],
-        fg=colors["text"], font=(font_family, 24, "bold"), anchor="w"
-    ).pack(anchor="w")
-    tk.Label(
-        title_area, text="合集多选、并行下载、进度控制和扫码登录",
-        bg=colors["bg"], fg=colors["muted"], font=(font_family, 10), anchor="w"
-    ).pack(anchor="w", pady=(5, 0))
+    header = ctk.CTkFrame(main_frame, fg_color="transparent", height=56)
+    header.pack(fill="x", pady=(0, 16))
 
-    status_pill = tk.Frame(header, bg=colors["accent_soft"], padx=14, pady=8,
-                           highlightthickness=1, highlightbackground="#bfe7eb")
-    status_pill.pack(side="right", anchor="n", padx=(18, 0))
-    status_dot = tk.Canvas(status_pill, width=10, height=10, bg=colors["accent_soft"], highlightthickness=0)
-    status_dot.create_oval(1, 1, 9, 9, fill=colors["dim"], outline="")
-    status_dot.pack(side="left", padx=(0, 8))
-    status_label = tk.Label(
-        status_pill, textvariable=cookie_status_var, bg=colors["accent_soft"],
-        fg=colors["muted"], font=(font_family, 10, "bold"), anchor="w"
+    title_frame = ctk.CTkFrame(header, fg_color="transparent")
+    title_frame.pack(side="left", fill="x", expand=True)
+    ctk.CTkLabel(
+        title_frame, text="Bilibili", font=ctk.CTkFont(size=26, weight="bold"),
+        text_color=BILI_PINK
+    ).pack(side="left")
+    ctk.CTkLabel(
+        title_frame, text="Video Downloader", font=ctk.CTkFont(size=26, weight="bold"),
+        text_color=("#1a1a1a", "#e0e0e0")
+    ).pack(side="left", padx=(4, 0))
+    ctk.CTkLabel(
+        title_frame, text="合集多选 · 并行下载 · 扫码登录",
+        font=ctk.CTkFont(size=11), text_color=("gray50", "gray40")
+    ).pack(side="left", padx=(16, 0), pady=(8, 0))
+
+    # Cookie status badge
+    cookie_badge = ctk.CTkFrame(header, fg_color=("#dff5f7", "#1a3a3f"), corner_radius=20)
+    cookie_badge.pack(side="right", padx=(10, 0))
+    cookie_dot = ctk.CTkLabel(cookie_badge, text="●", font=ctk.CTkFont(size=14), text_color=("gray60", "gray50"))
+    cookie_dot.pack(side="left", padx=(12, 4), pady=6)
+    cookie_label = ctk.CTkLabel(
+        cookie_badge, textvariable=cookie_status_var,
+        font=ctk.CTkFont(size=11, weight="bold"), text_color=("gray30", "gray70")
     )
-    status_label.pack(side="left")
+    cookie_label.pack(side="left", padx=(0, 12), pady=6)
 
     def set_cookie_status(text, color):
         cookie_status_var.set(text)
-        status_label.configure(fg=color)
-        status_dot.delete("all")
-        status_dot.create_oval(1, 1, 9, 9, fill=color, outline="")
+        cookie_dot.configure(text_color=color)
+        cookie_label.configure(text_color=color)
 
-    # ---- Two-column content ----
-    content = tk.Frame(shell, bg=colors["bg"])
+    # ---- Content: two columns ----
+    content = ctk.CTkFrame(main_frame, fg_color="transparent")
     content.pack(fill="both", expand=True)
     left_col = tk.Frame(content, bg=colors["bg"], width=500)
     left_col.pack(side="left", fill="both", padx=(0, 18))
@@ -931,55 +827,77 @@ def launch_gui():
     right_col = tk.Frame(content, bg=colors["bg"])
     right_col.pack(side="left", fill="both", expand=True)
 
-    # ---- Left: source and video selection ----
-    input_card = create_section(left_col, "下载来源")
+    # Left column
+    left_col = ctk.CTkFrame(content, fg_color="transparent")
+    left_col.pack(side="left", fill="both", expand=True, padx=(0, 10))
+    left_col.grid_columnconfigure(0, weight=1)
 
-    url_block = labeled_block(input_card, "视频链接")
-    url_entry = make_entry(url_block, url_var, font_size=10)
-    url_entry.pack(fill="x", ipady=8)
+    # Right column
+    right_col = ctk.CTkFrame(content, fg_color="transparent")
+    right_col.pack(side="left", fill="both", expand=True, padx=(10, 0))
+    right_col.grid_columnconfigure(0, weight=1)
 
-    folder_block = labeled_block(input_card, "下载目录")
-    folder_entry = make_entry(folder_block, folder_var)
-    folder_entry.pack(fill="x", ipady=8)
+    # ============================================================
+    # LEFT: Source Card
+    # ============================================================
+    source_card = ctk.CTkFrame(left_col, corner_radius=12)
+    source_card.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+    source_card.grid_columnconfigure(0, weight=1)
+
+    ctk.CTkLabel(
+        source_card, text="📥 下载来源", font=ctk.CTkFont(size=14, weight="bold")
+    ).pack(anchor="w", padx=18, pady=(14, 12))
+
+    # URL input
+    url_label = ctk.CTkLabel(source_card, text="视频链接", font=ctk.CTkFont(size=11), text_color=("gray40", "gray50"))
+    url_label.pack(anchor="w", padx=18, pady=(0, 4))
+    url_entry = ctk.CTkEntry(
+        source_card, placeholder_text="粘贴 B站视频链接…",
+        font=ctk.CTkFont(size=12), height=38, border_width=1
+    )
+    url_entry.configure(textvariable=url_var)
+    url_entry.pack(fill="x", padx=18, pady=(0, 10))
+
+    # Folder
+    folder_label = ctk.CTkLabel(source_card, text="下载目录", font=ctk.CTkFont(size=11), text_color=("gray40", "gray50"))
+    folder_label.pack(anchor="w", padx=18, pady=(0, 4))
+    folder_frame = ctk.CTkFrame(source_card, fg_color="transparent")
+    folder_frame.pack(fill="x", padx=18, pady=(0, 6))
+    folder_entry = ctk.CTkEntry(
+        folder_frame, font=ctk.CTkFont(size=12), height=38, border_width=1
+    )
+    folder_entry.configure(textvariable=folder_var)
+    folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+    folder_btn = ctk.CTkButton(
+        folder_frame, text="浏览", width=70, height=38,
+        font=ctk.CTkFont(size=12), fg_color=("gray80", "gray30"),
+        text_color=("gray15", "gray85"), hover_color=("gray70", "gray25"),
+        border_width=0
+    )
 
     def choose_folder():
         selected = filedialog.askdirectory(initialdir=folder_var.get() or default_dir)
         if selected:
             folder_var.set(selected)
+    folder_btn.configure(command=choose_folder)
+    folder_btn.pack(side="right")
 
-    source_buttons = tk.Frame(input_card, bg=colors["panel"])
-    source_buttons.pack(fill="x", pady=(2, 0))
-    parse_btn = create_modern_button(source_buttons, "解析列表", None, is_primary=True, width=11)
-    parse_btn.pack(side="left")
-    cookie_btn = create_modern_button(source_buttons, "获取 Cookie", None, width=11)
-    cookie_btn.pack(side="left", padx=(8, 0))
-    folder_btn = create_modern_button(source_buttons, "选择文件夹", choose_folder, width=11)
-    folder_btn.pack(side="left", padx=(8, 0))
-
-    selector_card = create_section(left_col, "选择视频", "按住 Ctrl 可多选")
-    selector_hint_box = tk.Frame(selector_card, bg=colors["panel"], height=34)
-    selector_hint_box.pack(fill="x", pady=(0, 8))
-    selector_hint_box.pack_propagate(False)
-    selector_hint = tk.Label(
-        selector_hint_box, textvariable=selected_video_var, bg=colors["panel"],
-        fg=colors["muted"], font=(font_family, 9), anchor="w", justify="left"
+    # Source buttons
+    src_btn_row = ctk.CTkFrame(source_card, fg_color="transparent")
+    src_btn_row.pack(fill="x", padx=18, pady=(4, 14))
+    parse_btn = ctk.CTkButton(
+        src_btn_row, text="🔍 解析列表", font=ctk.CTkFont(size=12, weight="bold"),
+        height=34, fg_color=BILI_BLUE, hover_color="#0088b3", corner_radius=8,
+        border_width=0
     )
-    selector_hint.pack(fill="x", expand=True)
+    parse_btn.pack(side="left", padx=(0, 8))
 
-    list_wrap = tk.Frame(selector_card, bg=colors["input_bg"], highlightthickness=1,
-                         highlightbackground=colors["line_strong"], highlightcolor=colors["accent"])
-    list_wrap.pack(fill="both", expand=True)
-    video_listbox = tk.Listbox(
-        list_wrap, height=15, activestyle="none", exportselection=False, selectmode="extended",
-        bg=colors["input_bg"], fg=colors["input_fg"], selectbackground=colors["accent"],
-        selectforeground="#ffffff", relief="flat", font=(font_family, 10), highlightthickness=0
+    cookie_btn = ctk.CTkButton(
+        src_btn_row, text="🍪 获取 Cookie", font=ctk.CTkFont(size=12, weight="bold"),
+        height=34, fg_color=("gray75", "gray35"), text_color=("gray15", "gray85"),
+        hover_color=("gray65", "gray25"), corner_radius=8, border_width=0
     )
-    video_listbox.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=10)
-    video_scrollbar = tk.Scrollbar(list_wrap, orient="vertical", command=video_listbox.yview)
-    video_scrollbar.pack(side="right", fill="y")
-    video_listbox.configure(yscrollcommand=video_scrollbar.set)
-    bind_local_scroll(video_listbox, video_listbox)
-    bind_local_scroll(list_wrap, video_listbox)
+    cookie_btn.pack(side="left", padx=(0, 8))
 
     action_bar = tk.Frame(selector_card, bg=colors["panel"])
     action_bar.pack(fill="x", pady=(12, 0))
@@ -1018,183 +936,308 @@ def launch_gui():
     cancel_btn = create_modern_button(task_buttons, "取消", None, is_danger=True, width=8)
     cancel_btn.pack(side="left", padx=(8, 0))
 
-    log_card = create_section(right_col, "运行日志", "日志区内滚动不会带动页面")
-    log_text = ScrolledText(
-        log_card, height=20, wrap="word", state="disabled",
-        bg=colors["log_bg"], fg=colors["log_text"], insertbackground=colors["log_text"],
-        relief="flat", font=mono_font, padx=12, pady=10,
-        highlightthickness=1, highlightbackground=colors["line_strong"], highlightcolor=colors["accent"]
+    list_header = ctk.CTkFrame(list_card, fg_color="transparent")
+    list_header.grid(row=0, column=0, sticky="ew", padx=18, pady=(14, 8))
+    ctk.CTkLabel(
+        list_header, text="📋 视频列表", font=ctk.CTkFont(size=14, weight="bold")
+    ).pack(side="left")
+    list_count_label = ctk.CTkLabel(
+        list_header, text="", font=ctk.CTkFont(size=11), text_color=("gray50", "gray50")
     )
-    log_text.pack(fill="both", expand=True)
-    log_text.tag_configure("hyperlink", foreground="#4dd0e1", underline=True)
-    log_text.tag_bind("hyperlink", "<Enter>", lambda _e: log_text.config(cursor="hand2"))
-    log_text.tag_bind("hyperlink", "<Leave>", lambda _e: log_text.config(cursor="arrow"))
-    log_text.tag_configure("success", foreground="#7ee2a8")
-    log_text.tag_configure("warning", foreground="#f6c96b")
-    log_text.tag_configure("error", foreground="#ff8b86")
-    bind_local_scroll(log_text, log_text)
+    list_count_label.pack(side="right")
 
-    footer_space = tk.Frame(shell, bg=colors["bg"], height=16)
-    footer_space.pack(fill="x")
+    # Listbox wrapped in CTkScrollableFrame
+    list_wrap = ctk.CTkScrollableFrame(list_card, corner_radius=8, border_width=1,
+                                        border_color=("gray80", "gray30"))
+    list_wrap.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 8))
+    list_wrap.grid_columnconfigure(0, weight=1)
 
-    # ---- Logging ----
+    # Action bar under video list
+    list_action_bar = ctk.CTkFrame(list_card, fg_color="transparent")
+    list_action_bar.grid(row=2, column=0, sticky="ew", padx=18, pady=(4, 14))
+    download_btn = ctk.CTkButton(
+        list_action_bar, text="⬇ 下载选中视频", font=ctk.CTkFont(size=12, weight="bold"),
+        height=34, fg_color=BILI_PINK, hover_color="#e06080", corner_radius=8,
+        border_width=0
+    )
+    download_btn.pack(side="left", padx=(0, 8))
+
+    # ============================================================
+    # RIGHT: Task Card
+    # ============================================================
+    task_card = ctk.CTkFrame(right_col, corner_radius=12)
+    task_card.grid(row=0, column=0, sticky="nsew", pady=(0, 12))
+    task_card.grid_columnconfigure(0, weight=1)
+    task_card.grid_rowconfigure(1, weight=1)
+    right_col.grid_rowconfigure(0, weight=1)
+
+    task_header = ctk.CTkFrame(task_card, fg_color="transparent")
+    task_header.grid(row=0, column=0, sticky="ew", padx=18, pady=(14, 8))
+    ctk.CTkLabel(
+        task_header, text="📋 下载任务", font=ctk.CTkFont(size=14, weight="bold")
+    ).pack(side="left")
+    task_status_label = ctk.CTkLabel(
+        task_header, textvariable=task_count_var, font=ctk.CTkFont(size=11),
+        text_color=("gray50", "gray50")
+    )
+    task_status_label.pack(side="right")
+
+    # Task scrollable area
+    task_scroll = ctk.CTkScrollableFrame(task_card, corner_radius=8, border_width=1,
+                                          border_color=("gray80", "gray30"))
+    task_scroll.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 8))
+    task_scroll.grid_columnconfigure(0, weight=1)
+
+    # Placeholder for empty task list
+    task_placeholder = ctk.CTkLabel(
+        task_scroll, text="← 选择视频后点击下载按钮\n任务将显示在这里",
+        font=ctk.CTkFont(size=11), text_color=("gray50", "gray40"), justify="center"
+    )
+    task_placeholder.pack(expand=True, fill="both", pady=40)
+
+    # Task control buttons
+    task_btn_row = ctk.CTkFrame(task_card, fg_color="transparent")
+    task_btn_row.grid(row=2, column=0, sticky="ew", padx=18, pady=(4, 14))
+    task_download_btn = ctk.CTkButton(
+        task_btn_row, text="⬇ 开始下载", font=ctk.CTkFont(size=12, weight="bold"),
+        height=32, fg_color=BILI_BLUE, hover_color="#0088b3", corner_radius=8,
+        border_width=0
+    )
+    task_download_btn.pack(side="left", padx=(0, 6))
+    pause_btn = ctk.CTkButton(
+        task_btn_row, text="⏸", font=ctk.CTkFont(size=12), width=40, height=32,
+        fg_color=("gray75", "gray35"), text_color=("gray15", "gray85"),
+        hover_color=("gray65", "gray25"), corner_radius=8, border_width=0
+    )
+    pause_btn.pack(side="left", padx=(0, 4))
+    resume_btn = ctk.CTkButton(
+        task_btn_row, text="▶", font=ctk.CTkFont(size=12), width=40, height=32,
+        fg_color=("gray75", "gray35"), text_color=("gray15", "gray85"),
+        hover_color=("gray65", "gray25"), corner_radius=8, border_width=0
+    )
+    resume_btn.pack(side="left", padx=(0, 4))
+    cancel_btn = ctk.CTkButton(
+        task_btn_row, text="✕", font=ctk.CTkFont(size=14, weight="bold"), width=40, height=32,
+        fg_color="#e04040", hover_color="#c03030", corner_radius=8, border_width=0
+    )
+    cancel_btn.pack(side="left", padx=(0, 6))
+    clear_done_btn = ctk.CTkButton(
+        task_btn_row, text="清除已完成", font=ctk.CTkFont(size=11),
+        height=32, fg_color="transparent", text_color=("gray50", "gray50"),
+        hover_color=("gray85", "gray25"), corner_radius=8, border_width=0
+    )
+    clear_done_btn.pack(side="right")
+
+    # ============================================================
+    # RIGHT: Log Card
+    # ============================================================
+    log_card = ctk.CTkFrame(right_col, corner_radius=12)
+    log_card.grid(row=1, column=0, sticky="nsew", pady=(0, 0))
+    log_card.grid_columnconfigure(0, weight=1)
+    log_card.grid_rowconfigure(1, weight=1)
+    right_col.grid_rowconfigure(1, weight=2)
+
+    log_header = ctk.CTkFrame(log_card, fg_color="transparent")
+    log_header.grid(row=0, column=0, sticky="ew", padx=18, pady=(14, 8))
+    ctk.CTkLabel(
+        log_header, text="📝 运行日志", font=ctk.CTkFont(size=14, weight="bold")
+    ).pack(side="left")
+    clear_log_btn = ctk.CTkButton(
+        log_header, text="清空", font=ctk.CTkFont(size=10),
+        width=50, height=24, fg_color="transparent", text_color=("gray50", "gray50"),
+        hover_color=("gray85", "gray25"), corner_radius=6, border_width=0
+    )
+    clear_log_btn.pack(side="right")
+
+    log_textbox = ctk.CTkTextbox(
+        log_card, font=ctk.CTkFont(family="Consolas", size=11),
+        corner_radius=8, border_width=1, border_color=("gray80", "gray30"),
+        activate_scrollbars=True, wrap="word"
+    )
+    log_textbox.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 14))
+
+    def _tag_color(light, dark):
+        return dark if ctk.get_appearance_mode() == "dark" else light
+
+    log_textbox.tag_config("success", foreground=_tag_color("#168a4a", "#7ee2a8"))
+    log_textbox.tag_config("warning", foreground=_tag_color("#b7791f", "#f6c96b"))
+    log_textbox.tag_config("error", foreground=_tag_color("#d83a34", "#ff8b86"))
+    log_textbox.tag_config("hyperlink", foreground=_tag_color("#00A1D6", "#4dd0e1"), underline=True)
+
+    # ============================================================
+    # Bottom status
+    # ============================================================
+    status_bar = ctk.CTkFrame(main_frame, fg_color="transparent", height=24)
+    status_bar.pack(fill="x", pady=(8, 4))
+    status_label = ctk.CTkLabel(
+        status_bar, textvariable=task_count_var,
+        font=ctk.CTkFont(size=11), text_color=("gray50", "gray40")
+    )
+    status_label.pack(side="left")
+    ctk.CTkLabel(
+        status_bar, text="Bilibili Video Downloader v2.0",
+        font=ctk.CTkFont(size=10), text_color=("gray60", "gray50")
+    ).pack(side="right")
+
+    # ============================================================
+    # Task management data
+    # ============================================================
+    # Each task widget is stored: task_widgets[task_id] = {frame, progress, status_label, title_label, pause_event, cancel_event}
+    task_widgets = {}
+
     def append_log(msg, tag=None):
-        def _write():
-            log_text.configure(state="normal")
-            text = str(msg)
-            pos = 0
-            for match in url_pattern.finditer(text):
-                if match.start() > pos:
-                    log_text.insert("end", text[pos:match.start()])
-                url_link = match.group(0)
-                tag_name = f"link_{link_counter['n']}"
-                link_counter["n"] += 1
-                log_text.insert("end", url_link, ("hyperlink", tag_name))
-                log_text.tag_bind(tag_name, "<Button-1>", lambda _e, u=url_link: webbrowser.open(u))
-                pos = match.end()
-            if pos < len(text):
-                log_text.insert("end", text[pos:], tag)
-            log_text.insert("end", "\n")
-            log_text.see("end")
-            log_text.configure(state="disabled")
-        if threading.current_thread() is threading.main_thread():
-            _write()
-        else:
-            root.after(0, _write)
+        text = str(msg)
+        log_textbox.configure(state="normal")
+        pos = 0
+        for match in url_pattern.finditer(text):
+            if match.start() > pos:
+                log_textbox.insert("end", text[pos:match.start()], tag or ())
+            url_link = match.group(0)
+            log_textbox.insert("end", url_link, "hyperlink")
+            pos = match.end()
+        if pos < len(text):
+            log_textbox.insert("end", text[pos:], tag or ())
+        log_textbox.insert("end", "\n")
+        log_textbox.see("end")
+        log_textbox.configure(state="disabled")
 
-    class _LogRedirect(io.TextIOBase):
-        def __init__(self, writer):
-            self.writer = writer
-            self._buffer = ""
-        def write(self, s):
-            if not s:
-                return 0
-            self._buffer += s
-            while "\n" in self._buffer:
-                line, self._buffer = self._buffer.split("\n", 1)
-                if line.strip():
-                    self.writer(line)
-            return len(s)
-        def flush(self):
-            if self._buffer.strip():
-                self.writer(self._buffer.strip())
-            self._buffer = ""
+    def clear_log():
+        log_textbox.configure(state="normal")
+        log_textbox.delete("1.0", "end")
+        log_textbox.configure(state="disabled")
+    clear_log_btn.configure(command=clear_log)
 
-    # ---- Video selection actions ----
-    def compact_text(text, limit=46):
-        text = str(text or "").replace("\n", " ").strip()
-        return text if len(text) <= limit else text[:limit - 1] + "…"
+    # ============================================================
+    # Video list management
+    # ============================================================
+    video_checkboxes = []
+    video_option_map = []
 
-    def selected_video_summary(option):
-        section = f"[{option.get('section')}] " if option.get("section") else ""
-        duration = f"  {option.get('duration')}" if option.get("duration") else ""
-        return f"{option.get('index'):02d}. {compact_text(section + option.get('title', ''), 34)}{duration}"
+    def refresh_video_list(options):
+        for w in video_checkboxes:
+            w.destroy()
+        video_checkboxes.clear()
+        video_option_map.clear()
 
-    def set_selected_video_text(text):
-        selected_video_var.set(compact_text(text, 58))
-
-    def set_video_options(options, parsed_url):
-        state["video_options"] = options
-        state["parsed_url"] = parsed_url
-        video_listbox.delete(0, "end")
-        for option in options:
-            video_listbox.insert("end", describe_video_option(option))
-        if options:
-            video_listbox.selection_set(0)
-            video_listbox.activate(0)
-            set_selected_video_text(f"已选 1 个：{selected_video_summary(options[0])}。按住 Ctrl 可继续多选。")
-        else:
-            set_selected_video_text("未找到可选视频。")
-
-    def clear_video_options():
-        state["video_options"] = []
-        state["parsed_url"] = ""
-        video_listbox.delete(0, "end")
-        set_selected_video_text("未解析列表，将按当前链接下载。按住 Ctrl 可多选视频。")
-
-    def on_video_select(_event=None):
-        selection = video_listbox.curselection()
-        if not selection:
-            set_selected_video_text("未选择视频。按住 Ctrl 可多选视频。")
+        if not options:
+            placeholder = ctk.CTkLabel(
+                list_wrap, text="← 点击「解析列表」加载视频",
+                font=ctk.CTkFont(size=11), text_color=("gray50", "gray40"), justify="center"
+            )
+            placeholder.pack(expand=True, fill="both", pady=30)
+            video_checkboxes.append(placeholder)
+            list_count_label.configure(text="")
             return
-        options = state.get("video_options", [])
-        if len(selection) == 1 and selection[0] < len(options):
-            set_selected_video_text(f"已选 1 个：{selected_video_summary(options[selection[0]])}。按住 Ctrl 可继续多选。")
-        else:
-            set_selected_video_text(f"已选 {len(selection)} 个视频。按住 Ctrl 可增减选择。")
 
-    video_listbox.bind("<<ListboxSelect>>", on_video_select)
+        list_count_label.configure(text=f"共 {len(options)} 个视频")
+        for opt in options:
+            section_tag = f"[{opt['section']}] " if opt.get("section") else ""
+            duration_tag = f"  {opt['duration']}" if opt.get("duration") else ""
+            label_text = f"{opt['index']:02d}. {section_tag}{opt['title']}{duration_tag}"
 
-    def parse_list_worker(video_url, cookie):
-        append_log("-" * 60)
-        try:
-            parsed = fetch_bilibili_video_options(video_url, cookie_str=cookie, logger=append_log)
-            root.after(0, lambda: set_video_options(parsed["options"], video_url))
-            append_log("视频列表解析完成，请在列表中选择要下载的条目。", "success")
-        except Exception as e:
-            root.after(0, clear_video_options)
-            append_log(f"视频列表解析失败: {e}", "error")
-        finally:
-            root.after(0, lambda: parse_btn.config(state="normal"))
+            row = ctk.CTkFrame(list_wrap, fg_color="transparent")
+            row.pack(fill="x", padx=4, pady=2)
+            row.grid_columnconfigure(0, weight=0)
+            row.grid_columnconfigure(1, weight=1)
 
-    def parse_list_action():
-        video_url = url_var.get().strip()
-        if not video_url:
-            messagebox.showwarning("提示", "请先填写 B站视频链接。")
+            var = ctk.BooleanVar(value=False)
+            cb = ctk.CTkCheckBox(
+                row, text="", variable=var, width=20, height=20,
+                checkbox_width=20, checkbox_height=20, border_width=2,
+                corner_radius=4
+            )
+            cb.grid(row=0, column=0, padx=(4, 8), pady=4, sticky="w")
+
+            title_lbl = ctk.CTkLabel(
+                row, text=label_text, font=ctk.CTkFont(size=11),
+                anchor="w", justify="left"
+            )
+            title_lbl.grid(row=0, column=1, sticky="ew", pady=4)
+
+            video_checkboxes.append(row)
+            video_option_map.append({"var": var, "option": opt})
+
+    # Initial placeholder
+    refresh_video_list([])
+
+    # ============================================================
+    # Parsing
+    # ============================================================
+    def do_parse():
+        url = url_var.get().strip()
+        if not url:
+            append_log("⚠️ 请先输入视频链接", "warning")
             return
-        parse_btn.config(state="disabled")
-        clear_video_options()
-        threading.Thread(target=parse_list_worker, args=(video_url, state["cookie"]), daemon=True).start()
+        append_log(f"🔍 正在解析: {url}")
+        parse_btn.configure(state="disabled", text="解析中…")
+        root.update()
 
-    parse_btn.configure(command=parse_list_action)
+        def parse_thread():
+            try:
+                result = fetch_bilibili_video_options(
+                    url, cookie_str=state["cookie"],
+                    logger=lambda m: root.after(0, lambda: append_log("  " + m))
+                )
+                state["video_options"] = result["options"]
+                state["parsed_url"] = result["source_url"]
+                root.after(0, lambda: refresh_video_list(result["options"]))
+                root.after(0, lambda: append_log(f"✅ 解析完成：找到 {len(result['options'])} 个视频", "success"))
+            except Exception as e:
+                root.after(0, lambda: append_log(f"❌ 解析失败: {e}", "error"))
+            finally:
+                root.after(0, lambda: [parse_btn.configure(state="normal", text="🔍 解析列表")])
 
-    def on_url_change(*_args):
-        if state.get("parsed_url") and url_var.get().strip() != state.get("parsed_url"):
-            clear_video_options()
+        threading.Thread(target=parse_thread, daemon=True).start()
 
-    url_var.trace_add("write", on_url_change)
+    parse_btn.configure(command=do_parse)
 
-    # ---- Cookie actions ----
-    def get_cookie_worker():
-        append_log("开始获取 B站 Cookie ...")
-        redirector = _LogRedirect(append_log)
-        with contextlib.redirect_stdout(redirector), contextlib.redirect_stderr(redirector):
+    # ============================================================
+    # Cookie
+    # ============================================================
+    def do_get_cookie():
+        append_log("🍪 正在获取 Cookie...")
+        cookie_btn.configure(state="disabled", text="获取中…")
+        root.update()
+
+        def cookie_thread():
             cookie = auto_get_bilibili_cookie(root_window=root)
-            redirector.flush()
-        if cookie:
-            state["cookie"] = cookie
-            hit_keys = [k for k in REQUIRED_COOKIE_KEYS if f"{k}=" in cookie]
-            root.after(0, lambda: set_cookie_status(f"Cookie 已获取：{', '.join(hit_keys)}", colors["success"]))
-            append_log("Cookie 获取成功。", "success")
-        else:
-            root.after(0, lambda: set_cookie_status("Cookie 获取失败", colors["danger"]))
-            append_log("Cookie 获取失败。", "error")
-            append_log("提示：点击「获取 Cookie」后弹出二维码，用 B站App 扫码即可。")
-        root.after(0, lambda: cookie_btn.config(state="normal"))
+            if cookie:
+                state["cookie"] = cookie
+                is_valid, msg, _ = _validate_bilibili_cookie(cookie)
+                username = msg.split("[")[1].split("]")[0] if "[" in msg else "已登录"
+                root.after(0, lambda: set_cookie_status(f"✅ {username}", "#22c55e"))
+                root.after(0, lambda: append_log(f"✅ Cookie 获取成功: {msg}", "success"))
+            else:
+                root.after(0, lambda: set_cookie_status("⚠️ Cookie 未获取", "#e04040"))
+                root.after(0, lambda: append_log("⚠️ Cookie 获取失败，可能仅低画质", "warning"))
+            root.after(0, lambda: cookie_btn.configure(state="normal", text="🍪 获取 Cookie"))
 
-    def get_cookie_action():
-        cookie_btn.config(state="disabled")
-        threading.Thread(target=get_cookie_worker, daemon=True).start()
+        threading.Thread(target=cookie_thread, daemon=True).start()
 
-    cookie_btn.configure(command=get_cookie_action)
+    cookie_btn.configure(command=do_get_cookie)
 
-    def clear_cache_action():
+    def do_clear_cache():
         _clear_cookie_cache()
         state["cookie"] = ""
-        set_cookie_status("Cookie 已清除", colors["muted"])
-        append_log("Cookie 缓存已清除。下次下载需重新扫码获取。", "warning")
+        set_cookie_status("Cookie 已清除", "gray50")
+        append_log("🗑️ Cookie 缓存已清除", "warning")
+    clear_cache_btn.configure(command=do_clear_cache)
 
-    clear_btn.configure(command=clear_cache_action)
-
-    # ---- Task actions ----
-    def task_line(task):
-        percent = task.get("percent")
-        percent_text = f"{percent:5.1f}%" if isinstance(percent, (int, float)) else "  ---%"
-        return f"{task['seq']:02d}  {percent_text}  {task['status']:<8}  {task['title']}"
+    # ============================================================
+    # Task widgets in scroll area
+    # ============================================================
+    def update_task_count():
+        total = len(state["task_order"])
+        active = sum(1 for tid in state["task_order"] if state["tasks"][tid]["status"] not in ("已完成", "已取消"))
+        done = total - active
+        if total == 0:
+            task_count_var.set("准备就绪")
+        else:
+            task_count_var.set(f"已完成 {done}/{total}  · 进行中 {active}")
 
     def refresh_task_row(task_id):
-        task = state["tasks"].get(task_id)
-        if not task:
+        info = state["tasks"].get(task_id)
+        if not info:
             return
         order = state["task_order"]
         # 首次添加任务时，清除占位提示
@@ -1206,146 +1249,109 @@ def launch_gui():
             order.append(task_id)
             task_listbox.insert("end", task_line(task))
         else:
-            idx = order.index(task_id)
-            selected_ids = [order[i] for i in task_listbox.curselection() if i < len(order)]
-            task_listbox.delete(idx)
-            task_listbox.insert(idx, task_line(task))
-            for i, existing_id in enumerate(order):
-                if existing_id in selected_ids:
-                    task_listbox.selection_set(i)
+            # Create new task widget
+            placeholder = task_placeholder
+            if placeholder.winfo_exists():
+                try:
+                    placeholder.pack_forget()
+                except Exception:
+                    pass
 
-    def update_task(task_id, status=None, percent=None, detail=None):
-        def _apply():
-            task = state["tasks"].get(task_id)
-            if not task:
+            frame = ctk.CTkFrame(task_scroll, fg_color="transparent", height=52)
+            frame.pack(fill="x", padx=4, pady=3)
+            frame.grid_columnconfigure(1, weight=1)
+            frame.pack_propagate(False)
+
+            title_lbl = ctk.CTkLabel(
+                frame, text=info["title"],
+                font=ctk.CTkFont(size=11, weight="bold"), anchor="w"
+            )
+            title_lbl.grid(row=0, column=0, columnspan=2, sticky="w", pady=(2, 0))
+
+            prog = ctk.CTkProgressBar(frame, height=10, corner_radius=4,
+                                       border_width=0, progress_color=("#00A1D6", "#4dd0e1"))
+            prog.grid(row=1, column=0, sticky="ew", padx=(0, 8), pady=(4, 4))
+            prog.set(0.0)
+
+            status_lbl = ctk.CTkLabel(
+                frame, text="等待中", font=ctk.CTkFont(size=10),
+                text_color=("gray50", "gray50"), width=110, anchor="e"
+            )
+            status_lbl.grid(row=1, column=1, sticky="e", pady=(4, 4))
+
+            task_widgets[task_id] = {
+                "frame": frame, "progress": prog, "status_label": status_lbl
+            }
+
+        update_task_count()
+
+    def download_worker(task_id, video_url, out_dir, cookie_str, selected_option):
+        pause_event = state["tasks"][task_id]["pause_event"]
+        cancel_event = state["tasks"][task_id]["cancel_event"]
+        control = {"pause_event": pause_event, "cancel_event": cancel_event}
+
+        def log(msg):
+            root.after(0, lambda: append_log(f"  [{state['tasks'][task_id]['seq']}] {msg}"))
+
+        def progress(stage, percent=None, detail=""):
+            info = state["tasks"].get(task_id)
+            if not info:
                 return
-            if status is not None:
-                task["status"] = status
+            info["stage"] = stage
+            info["status"] = "下载中" if percent is not None else info["status"]
             if percent is not None:
-                task["percent"] = max(0, min(100, float(percent)))
-            if detail:
-                task["detail"] = detail
-            refresh_task_row(task_id)
-        root.after(0, _apply)
+                info["percent"] = percent
+            root.after(0, lambda: refresh_task_row(task_id))
 
-    def selected_task_ids():
-        return [
-            state["task_order"][i]
-            for i in task_listbox.curselection()
-            if i < len(state["task_order"])
-        ]
-
-    def pause_selected_tasks():
-        ids = selected_task_ids()
-        if not ids:
-            messagebox.showwarning("提示", "请先在下载任务列表中选择任务。")
-            return
-        for task_id in ids:
-            task = state["tasks"].get(task_id)
-            if task and task["status"] not in {"完成", "失败", "已取消"}:
-                task["pause_event"].clear()
-                update_task(task_id, status="已暂停")
-        append_log(f"已暂停 {len(ids)} 个任务。", "warning")
-
-    def resume_selected_tasks():
-        ids = selected_task_ids()
-        if not ids:
-            messagebox.showwarning("提示", "请先在下载任务列表中选择任务。")
-            return
-        for task_id in ids:
-            task = state["tasks"].get(task_id)
-            if task and task["status"] not in {"完成", "失败", "已取消"}:
-                task["pause_event"].set()
-                update_task(task_id, status="继续中")
-        append_log(f"已继续 {len(ids)} 个任务。", "success")
-
-    def cancel_selected_tasks():
-        ids = selected_task_ids()
-        if not ids:
-            messagebox.showwarning("提示", "请先在下载任务列表中选择任务。")
-            return
-        for task_id in ids:
-            task = state["tasks"].get(task_id)
-            if task and task["status"] not in {"完成", "失败", "已取消"}:
-                task["cancel_event"].set()
-                task["pause_event"].set()
-                update_task(task_id, status="取消中")
-        append_log(f"已请求取消 {len(ids)} 个任务。", "warning")
-
-    pause_btn.configure(command=pause_selected_tasks)
-    resume_btn.configure(command=resume_selected_tasks)
-    cancel_btn.configure(command=cancel_selected_tasks)
-
-    def download_worker(task_id, video_url, out_dir, cookie, selected_option):
-        task = state["tasks"][task_id]
-        append_log("-" * 60)
-        append_log(f"开始下载任务：{task['title']}")
-
-        def progress_report(stage, percent=None, detail=""):
-            status = stage
-            if task["cancel_event"].is_set():
-                status = "取消中"
-            elif not task["pause_event"].is_set():
-                status = "已暂停"
-            update_task(task_id, status=status, percent=percent, detail=detail)
-
-        ok = download_bilibili_video(
-            video_url, cookie, output_dir=out_dir,
-            logger=append_log, selected_option=selected_option,
-            control={"pause_event": task["pause_event"], "cancel_event": task["cancel_event"]},
-            progress_callback=progress_report,
+        success = download_bilibili_video(
+            video_url, cookie_str=cookie_str, output_dir=out_dir,
+            logger=log, selected_option=selected_option,
+            control=control, progress_callback=progress
         )
 
-        def finish_ui():
-            if task["cancel_event"].is_set():
-                update_task(task_id, status="已取消", percent=task.get("percent", 0))
-                append_log(f"任务已取消：{task['title']}", "warning")
-            elif ok:
-                update_task(task_id, status="完成", percent=100)
-                append_log(f"任务完成：{task['title']}", "success")
+        if task_id in state["tasks"]:
+            if success:
+                state["tasks"][task_id]["status"] = "已完成"
+                state["tasks"][task_id]["percent"] = 100.0
+                root.after(0, lambda: append_log(f"  ✅ [{state['tasks'][task_id]['seq']}] 下载完成", "success"))
             else:
-                update_task(task_id, status="失败")
-                append_log(f"任务失败：{task['title']}", "error")
-        root.after(0, finish_ui)
+                if state["tasks"][task_id]["status"] != "已取消":
+                    state["tasks"][task_id]["status"] = "失败"
+                    root.after(0, lambda: append_log(f"  ❌ [{state['tasks'][task_id]['seq']}] 下载失败", "error"))
+            root.after(0, lambda: refresh_task_row(task_id))
 
     def start_download():
-        video_url = url_var.get().strip()
-        out_dir = folder_var.get().strip()
-        if not video_url:
-            messagebox.showwarning("提示", "请先填写 B站视频链接。")
+        selected_options = []
+        for item in video_option_map:
+            if item["var"].get():
+                selected_options.append(item["option"])
+
+        if not selected_options:
+            append_log("⚠️ 请先在左侧勾选要下载的视频", "warning")
             return
-        if not out_dir:
-            messagebox.showwarning("提示", "请先选择下载目录。")
-            return
-        if not state.get("cookie"):
-            proceed = messagebox.askyesno(
-                "未登录",
-                "尚未获取 Cookie，将以未登录模式下载（可能仅低画质）。\n\n是否继续？"
-            )
-            if not proceed:
+
+        out_dir = folder_var.get().strip() or default_dir
+        if not os.path.exists(out_dir):
+            try:
+                os.makedirs(out_dir)
+            except Exception as e:
+                append_log(f"❌ 无法创建目录: {e}", "error")
                 return
 
-        options = state.get("video_options", [])
-        if options:
-            selection = video_listbox.curselection()
-            if not selection:
-                messagebox.showwarning("提示", "请先在视频列表中选择一个或多个要下载的条目。")
-                return
-            selected_options = [options[i] for i in selection if i < len(options)]
-        else:
-            selected_options = [None]
-
-        os.makedirs(out_dir, exist_ok=True)
         for selected_option in selected_options:
-            task_id = uuid.uuid4().hex
-            title = selected_option.get("title") if selected_option else f"当前链接 {len(state['task_order']) + 1}"
+            task_id = uuid.uuid4().hex[:10]
+            title = selected_option.get("title", "未知")
+            video_url = selected_option.get("url") or state.get("parsed_url", "")
             pause_event = threading.Event()
-            pause_event.set()
+            pause_event.set()  # not paused initially
+
+            state["task_order"].append(task_id)
             state["tasks"][task_id] = {
-                "seq": len(state["task_order"]) + 1,
+                "seq": len(state["task_order"]),
                 "title": title,
                 "status": "等待中",
                 "percent": 0.0,
+                "stage": "",
                 "pause_event": pause_event,
                 "cancel_event": threading.Event(),
             }
@@ -1356,7 +1362,7 @@ def launch_gui():
                 daemon=True
             ).start()
 
-        append_log(f"已启动 {len(selected_options)} 个下载任务。", "success")
+        append_log(f"🚀 已启动 {len(selected_options)} 个下载任务。", "success")
 
     download_btn.configure(command=start_download)
     task_download_btn.configure(command=start_download)
