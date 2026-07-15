@@ -188,36 +188,37 @@ def _get_cookie_by_qr_login(root_window=None):
                 def create_qr_window():
                     try:
                         pil_image = Image.open(io.BytesIO(qr_img_data))
-                        tk_image = ImageTk.PhotoImage(pil_image)
+                        ctk_img = ctk.CTkImage(light_image=pil_image, dark_image=pil_image, size=(240, 240))
+                        try:
+                            mode = ctk.get_appearance_mode()
+                        except Exception:
+                            mode = "light"
+                        primary = "#0EA47A" if mode != "dark" else "#2DD4A7"
 
-                        qr_window = Toplevel(root_window)
+                        qr_window = ctk.CTkToplevel(root_window)
                         qr_window.title("B站扫码登录")
-                        qr_window.geometry("360x430")
-                        qr_window.configure(bg="#ffffff")
+                        qr_window.geometry("360x470")
                         qr_window.resizable(False, False)
                         qr_window.transient(root_window)
+                        qr_window.grab_set()
 
-                        tk.Label(
+                        ctk.CTkLabel(
                             qr_window, text="请用 B站 App 扫描二维码",
-                            bg="#ffffff", fg="#172033",
-                            font=("Microsoft YaHei UI", 13, "bold")
+                            font=ctk.CTkFont(family="Microsoft YaHei UI", size=13, weight="bold"),
                         ).pack(pady=(22, 10))
 
-                        qr_label = tk.Label(qr_window, image=tk_image, bg="#ffffff")
-                        qr_label.image = tk_image
+                        qr_label = ctk.CTkLabel(qr_window, image=ctk_img, text="")
+                        qr_label.image = ctk_img
                         qr_label.pack(padx=20, pady=8)
 
-                        tk.Label(
-                            qr_window,
-                            text="打开 B站 App -> 扫一扫 -> 确认登录",
-                            bg="#ffffff", fg="#5B6472",
-                            font=("Microsoft YaHei UI", 9)
+                        ctk.CTkLabel(
+                            qr_window, text="打开 B站 App -> 扫一扫 -> 确认登录",
+                            font=ctk.CTkFont(family="Microsoft YaHei UI", size=9),
                         ).pack(pady=(2, 12))
 
-                        status_lbl = tk.Label(
-                            qr_window, text="等待扫码...",
-                            bg="#ffffff", fg="#2563EB",
-                            font=("Microsoft YaHei UI", 10)
+                        status_lbl = ctk.CTkLabel(
+                            qr_window, text="等待扫码...", text_color=primary,
+                            font=ctk.CTkFont(family="Microsoft YaHei UI", size=10),
                         )
                         status_lbl.pack()
 
@@ -228,7 +229,7 @@ def _get_cookie_by_qr_login(root_window=None):
                         qr_window.protocol("WM_DELETE_WINDOW", on_close)
                         qr_window.update_idletasks()
                         x = root_window.winfo_x() + (root_window.winfo_width() - 360) // 2
-                        y = root_window.winfo_y() + (root_window.winfo_height() - 430) // 2
+                        y = root_window.winfo_y() + (root_window.winfo_height() - 470) // 2
                         qr_window.geometry(f"+{max(x, 0)}+{max(y, 0)}")
 
                         qr_ui["window"] = qr_window
@@ -250,13 +251,21 @@ def _get_cookie_by_qr_login(root_window=None):
             print("\n请在浏览器打开下面链接，然后用手机 B站 App 扫码：")
             print(desktop_qr_url)
 
-        def update_qr_status(text, color="#2563EB"):
+        def update_qr_status(text, color=None):
             if not root_window or not qr_ui.get("window") or qr_ui.get("closed"):
                 return
 
             def apply_status():
                 if qr_ui.get("status") and qr_ui["status"].winfo_exists():
-                    qr_ui["status"].configure(text=text, fg=color)
+                    if color is None:
+                        try:
+                            m = ctk.get_appearance_mode()
+                        except Exception:
+                            m = "light"
+                        c = "#0EA47A" if m != "dark" else "#2DD4A7"
+                    else:
+                        c = color
+                    qr_ui["status"].configure(text=text, text_color=c)
 
             root_window.after(0, apply_status)
 
@@ -1053,227 +1062,292 @@ def _check_ffmpeg():
         "或重装 moviepy（pip install moviepy）以使用其内置 ffmpeg。"
     )
 
+# ============================================================
+# 设计系统（Design Tokens）—— 视觉重做
+# ============================================================
+DEFAULT_FONT = "Microsoft YaHei UI"
+MONO_FONT = "Consolas"
+MAX_CONCURRENT_DOWNLOADS = 3
+
+FONT_SCALE = {"display": 24, "title": 15, "label": 11, "body": 12, "caption": 10}
+SPACING = {"xs": 4, "s": 8, "m": 12, "l": 18, "xl": 22}
+
+THEME_LIGHT = {
+    "bg": "#F4F6F8", "surface": "#FFFFFF", "surface_soft": "#EEF2F6",
+    "surface_hover": "#E6EDF5", "code": "#F8FAFC", "border": "#D8DEE6",
+    "border_strong": "#B7C2D0", "primary": "#0EA47A", "primary_hover": "#0B8A66",
+    "primary_soft": "#D6F3EA", "success": "#059669", "success_soft": "#D1FAE5",
+    "warning": "#D97706", "danger": "#DC2626", "danger_hover": "#B91C1C",
+    "danger_soft": "#FEE2E2", "text_primary": "#172033", "text_secondary": "#5B6472",
+    "text_dim": "#8A94A6", "text_disabled": "#A6AFBD", "text_on_primary": "#FFFFFF",
+    "input_bg": "#FFFFFF",
+}
+THEME_DARK = {
+    "bg": "#0F1419", "surface": "#1A212B", "surface_soft": "#222C38",
+    "surface_hover": "#2B3848", "code": "#141B23", "border": "#2E3A47",
+    "border_strong": "#3D4D5E", "primary": "#2DD4A7", "primary_hover": "#22B68C",
+    "primary_soft": "#11302A", "success": "#34D399", "success_soft": "#0F2E25",
+    "warning": "#FBBF24", "danger": "#F87171", "danger_hover": "#EF4444",
+    "danger_soft": "#3A1D1D", "text_primary": "#E6EDF3", "text_secondary": "#A3AEBB",
+    "text_dim": "#6B7888", "text_disabled": "#566273", "text_on_primary": "#06231C",
+    "input_bg": "#141B23",
+}
+
+# 跨构建持久状态（主题切换重建界面时不丢失）
+_UI = {
+    "root": None, "appearance": "light", "state": None,
+    "video_checkboxes": [], "video_option_map": [], "task_widgets": {},
+    "append_log": None, "clear_log": None, "set_cookie_status": None,
+    "refresh_video_list": None, "rebuild_quality_buttons": None,
+    "refresh_task_row": None, "update_task_count": None,
+    "maybe_start_next_download": None, "download_worker": None,
+}
+
+
+def _get_theme():
+    return THEME_DARK if _UI["appearance"] == "dark" else THEME_LIGHT
+
+
+def COL(key):
+    return _get_theme()[key]
+
+
+def FONT(role, weight=None):
+    return ctk.CTkFont(family=DEFAULT_FONT, size=FONT_SCALE[role], weight=weight)
+
+
+def _appearance_label():
+    ap = _UI["appearance"]
+    if ap == "dark":
+        return "🌙 深色"
+    if ap == "system":
+        return "🖥 系统"
+    return "☀ 浅色"
+
+
+def _on_theme_change(value):
+    if "深色" in value:
+        ap, mode = "dark", "dark"
+    elif "系统" in value:
+        ap, mode = "system", "system"
+    else:
+        ap, mode = "light", "light"
+    _UI["appearance"] = ap
+    ctk.set_appearance_mode(mode)
+    rebuild_ui()
+
 
 def launch_gui():
-    ctk.set_appearance_mode("light")
-    ctk.set_default_color_theme("blue")
-
     root = ctk.CTk()
-    root.configure(fg_color="#F4F6F8")
-    root.title("Bilibili Video Downloader")
-    root.geometry("1280x880")
-    root.minsize(1080, 720)
-
-    # ============================================================
-    # 浅色工作台主题
-    # ============================================================
-    APP_BG = "#F4F6F8"
-    PANEL = "#FFFFFF"
-    PANEL_SOFT = "#EEF2F6"
-    PANEL_HOVER = "#E6EDF5"
-    BORDER = "#D8DEE6"
-    BORDER_STRONG = "#B7C2D0"
-    PRIMARY = "#2563EB"
-    PRIMARY_HOVER = "#1D4ED8"
-    PRIMARY_SOFT = "#DBEAFE"
-    SUCCESS = "#059669"
-    SUCCESS_SOFT = "#D1FAE5"
-    WARNING = "#D97706"
-    DANGER = "#DC2626"
-    DANGER_HOVER = "#B91C1C"
-    DANGER_SOFT = "#FEE2E2"
-    TEXT_PRIMARY = "#172033"
-    TEXT_SECONDARY = "#5B6472"
-    TEXT_DIM = "#8A94A6"
-    TEXT_DISABLED = "#A6AFBD"
-    INPUT_BG = "#FFFFFF"
-    CODE_BG = "#F8FAFC"
-    MAX_CONCURRENT_DOWNLOADS = 3
-
-    state = {
-        "cookie": "",
-        "video_options": [],
-        "parsed_url": "",
-        "tasks": {},
-        "task_order": [],
-        "task_queue": [],
-        "active_downloads": 0,
-        "quality_id": 80,
-        "available_qualities": set(),
-        "quality_checked": False,
-        "parse_bvid": "",
-        "parse_cid": "",
-        "cover_url": "",
-        "quality_widgets": [],
-        "quality_info": {},
+    _UI["root"] = root
+    _UI["state"] = {
+        "cookie": "", "cookie_user": "", "video_options": [], "parsed_url": "",
+        "tasks": {}, "task_order": [], "task_queue": [],
+        "active_downloads": 0, "quality_id": 80, "available_qualities": set(),
+        "quality_checked": False, "parse_bvid": "", "parse_cid": "",
+        "cover_url": "", "quality_widgets": [], "quality_info": {},
     }
-    default_dir = os.path.join(os.path.expanduser("~"), "Desktop")
-    url_pattern = re.compile(r"https?://[^\s]+")
+    _UI["video_checkboxes"] = []
+    _UI["video_option_map"] = []
+    _UI["task_widgets"] = {}
+    ctk.set_default_color_theme("green")
+    build_ui(root, initial=True)
+    root.mainloop()
+
+
+def build_ui(root, initial=False):
+    ctk.set_appearance_mode(_UI["appearance"])
+    state = _UI["state"]
 
     cookie_status_var = ctk.StringVar(value="未登录")
     url_var = ctk.StringVar(value="")
-    folder_var = ctk.StringVar(value=default_dir)
+    folder_var = ctk.StringVar(value=os.path.join(os.path.expanduser("~"), "Desktop"))
     task_count_var = ctk.StringVar(value="准备就绪")
     download_video_var = ctk.BooleanVar(value=True)
     download_audio_var = ctk.BooleanVar(value=False)
     download_cover_var = ctk.BooleanVar(value=False)
-
-    def font(size, weight=None, family="Microsoft YaHei UI"):
-        return ctk.CTkFont(family=family, size=size, weight=weight)
+    url_pattern = re.compile(r"https?://[^\s]+")
 
     def make_card(parent, **grid_options):
-        frame = ctk.CTkFrame(
-            parent, fg_color=PANEL, corner_radius=8,
-            border_width=1, border_color=BORDER
-        )
+        frame = ctk.CTkFrame(parent, fg_color=COL("surface"), corner_radius=10,
+                             border_width=1, border_color=COL("border"))
         if grid_options:
             frame.grid(**grid_options)
         return frame
 
     def make_button(parent, text, kind="primary", width=None, height=34, command=None):
         if kind == "primary":
-            colors = dict(fg_color=PRIMARY, hover_color=PRIMARY_HOVER, text_color="#FFFFFF")
+            colors = dict(fg_color=COL("primary"), hover_color=COL("primary_hover"),
+                          text_color=COL("text_on_primary"))
         elif kind == "danger":
-            colors = dict(fg_color=DANGER, hover_color=DANGER_HOVER, text_color="#FFFFFF")
+            colors = dict(fg_color=COL("danger"), hover_color=COL("danger_hover"),
+                          text_color=COL("text_on_primary"))
         elif kind == "ghost":
-            colors = dict(fg_color="transparent", hover_color=PANEL_HOVER, text_color=TEXT_SECONDARY)
+            colors = dict(fg_color="transparent", hover_color=COL("surface_hover"),
+                          text_color=COL("text_secondary"))
         else:
-            colors = dict(fg_color=PANEL_SOFT, hover_color=PANEL_HOVER, text_color=TEXT_PRIMARY)
-        button_kwargs = dict(
-            master=parent, text=text, height=height, command=command,
-            font=font(12, "bold" if kind == "primary" else None),
-            corner_radius=7, border_width=0, **colors
-        )
+            colors = dict(fg_color=COL("surface_soft"), hover_color=COL("surface_hover"),
+                          text_color=COL("text_primary"))
+        kwargs = dict(master=parent, text=text, height=height, command=command,
+                      font=FONT("body", "bold" if kind == "primary" else None),
+                      corner_radius=8, border_width=0, **colors)
         if width is not None:
-            button_kwargs["width"] = width
-        return ctk.CTkButton(**button_kwargs)
+            kwargs["width"] = width
+        return ctk.CTkButton(**kwargs)
 
-    def make_label(parent, text="", size=12, weight=None, color=None, **kwargs):
-        return ctk.CTkLabel(
-            parent, text=text, font=font(size, weight),
-            text_color=color or TEXT_PRIMARY, **kwargs
-        )
+    def make_label(parent, text="", role="body", weight=None, color=None, **kwargs):
+        return ctk.CTkLabel(parent, text=text, font=FONT(role, weight),
+                            text_color=color or COL("text_primary"), **kwargs)
+
+    def make_check(parent, text, var):
+        return ctk.CTkCheckBox(parent, text=text, variable=var, font=FONT("body"),
+                               checkbox_width=19, checkbox_height=19, border_width=2,
+                               corner_radius=5, fg_color=COL("primary"),
+                               hover_color=COL("primary_hover"),
+                               border_color=COL("border_strong"),
+                               text_color=COL("text_primary"))
 
     def set_cookie_status(text, color, bg=None):
         cookie_status_var.set(text)
         cookie_dot.configure(text_color=color)
         cookie_label.configure(text_color=color)
-        cookie_badge.configure(fg_color=bg or PANEL_SOFT, border_color=color)
+        cookie_badge.configure(fg_color=bg or COL("surface_soft"), border_color=color)
+
+    def _focus_in(e):
+        try:
+            e.widget.configure(border_color=COL("primary"))
+        except Exception:
+            pass
+
+    def _focus_out(e):
+        try:
+            e.widget.configure(border_color=COL("border_strong"))
+        except Exception:
+            pass
 
     main_frame = ctk.CTkFrame(root, fg_color="transparent")
-    main_frame.pack(fill="both", expand=True, padx=22, pady=(18, 12))
+    main_frame.pack(fill="both", expand=True, padx=SPACING.xl, pady=(SPACING.l, SPACING.m))
 
+    # ---------- Header ----------
     header = ctk.CTkFrame(main_frame, fg_color="transparent")
-    header.pack(fill="x", pady=(0, 12))
+    header.pack(fill="x", pady=(0, SPACING.m))
     header.grid_columnconfigure(0, weight=1)
 
     title_block = ctk.CTkFrame(header, fg_color="transparent")
     title_block.grid(row=0, column=0, sticky="w")
-    make_label(title_block, "Bilibili Video Downloader", 24, "bold").pack(anchor="w")
-    make_label(title_block, "视频、音频、封面下载工作台", 11, color=TEXT_SECONDARY).pack(anchor="w", pady=(2, 0))
+    make_label(title_block, "Bilibili Video Downloader", "display", "bold").pack(anchor="w")
+    make_label(title_block, "视频 · 音频 · 封面 下载工作台", "caption",
+               color=COL("text_secondary")).pack(anchor="w", pady=(2, 0))
 
-    cookie_badge = ctk.CTkFrame(
-        header, fg_color=PANEL_SOFT, corner_radius=8,
-        border_width=1, border_color=BORDER
-    )
-    cookie_badge.grid(row=0, column=1, sticky="e", padx=(12, 0))
-    cookie_dot = make_label(cookie_badge, "●", 13, color=TEXT_DIM)
-    cookie_dot.pack(side="left", padx=(12, 5), pady=8)
-    cookie_label = make_label(cookie_badge, "", 12, "bold", TEXT_SECONDARY, textvariable=cookie_status_var)
-    cookie_label.pack(side="left", padx=(0, 12), pady=8)
-    make_label(header, "v2.1", 11, color=TEXT_DIM).grid(row=0, column=2, sticky="e", padx=(12, 0))
+    theme_switch = ctk.CTkSegmentedButton(header, values=["☀ 浅色", "🌙 深色", "🖥 系统"],
+                                          height=30, command=_on_theme_change, font=FONT("label"))
+    theme_switch.set(_appearance_label())
+    theme_switch.grid(row=0, column=1, sticky="e", padx=(SPACING.m, 0))
 
+    cookie_badge = ctk.CTkFrame(header, fg_color=COL("surface_soft"), corner_radius=8,
+                                border_width=1, border_color=COL("border"))
+    cookie_badge.grid(row=0, column=2, sticky="e", padx=(SPACING.m, 0))
+    cookie_dot = make_label(cookie_badge, "●", "body", color=COL("text_dim"))
+    cookie_dot.pack(side="left", padx=(SPACING.m, SPACING.xs), pady=SPACING.s)
+    cookie_label = make_label(cookie_badge, "", "body", "bold", COL("text_secondary"),
+                              textvariable=cookie_status_var)
+    cookie_label.pack(side="left", padx=(0, SPACING.m), pady=SPACING.s)
+    make_label(header, "v2.1", "caption", color=COL("text_dim")).grid(
+        row=0, column=3, sticky="e", padx=(SPACING.m, 0))
+
+    # ---------- 控制卡片 ----------
     control_card = make_card(main_frame)
-    control_card.pack(fill="x", pady=(0, 12))
+    control_card.pack(fill="x", pady=(0, SPACING.m))
     control_card.grid_columnconfigure(1, weight=1)
-    make_label(control_card, "下载来源", 15, "bold").grid(row=0, column=0, columnspan=4, sticky="w", padx=18, pady=(14, 10))
+    make_label(control_card, "🔗 下载来源", "title", "bold").grid(
+        row=0, column=0, columnspan=4, sticky="w", padx=SPACING.l, pady=(SPACING.m, SPACING.s))
 
-    make_label(control_card, "链接", 11, "bold", TEXT_SECONDARY, width=42, anchor="w").grid(row=1, column=0, sticky="w", padx=(18, 10), pady=5)
-    url_entry = ctk.CTkEntry(
-        control_card, textvariable=url_var, placeholder_text="粘贴 B站视频链接",
-        height=36, border_width=1, corner_radius=7, fg_color=INPUT_BG,
-        border_color=BORDER_STRONG, text_color=TEXT_PRIMARY,
-        placeholder_text_color=TEXT_DIM, font=font(12)
-    )
-    url_entry.grid(row=1, column=1, columnspan=3, sticky="ew", padx=(0, 18), pady=5)
+    make_label(control_card, "链接", "label", "bold", COL("text_secondary"),
+               width=42, anchor="w").grid(row=1, column=0, sticky="w",
+                                           padx=(SPACING.l, SPACING.s), pady=SPACING.xs)
+    url_entry = ctk.CTkEntry(control_card, textvariable=url_var,
+                             placeholder_text="粘贴 B站视频链接", height=36,
+                             border_width=1, corner_radius=8, fg_color=COL("input_bg"),
+                             border_color=COL("border_strong"), text_color=COL("text_primary"),
+                             placeholder_text_color=COL("text_dim"), font=FONT("body"))
+    url_entry.grid(row=1, column=1, columnspan=3, sticky="ew",
+                   padx=(0, SPACING.l), pady=SPACING.xs)
+    url_entry.bind("<FocusIn>", _focus_in)
+    url_entry.bind("<FocusOut>", _focus_out)
 
-    make_label(control_card, "目录", 11, "bold", TEXT_SECONDARY, width=42, anchor="w").grid(row=2, column=0, sticky="w", padx=(18, 10), pady=5)
-    folder_entry = ctk.CTkEntry(
-        control_card, textvariable=folder_var, height=36, border_width=1,
-        corner_radius=7, fg_color=INPUT_BG, border_color=BORDER_STRONG,
-        text_color=TEXT_PRIMARY, font=font(12)
-    )
-    folder_entry.grid(row=2, column=1, columnspan=2, sticky="ew", padx=(0, 8), pady=5)
+    make_label(control_card, "目录", "label", "bold", COL("text_secondary"),
+               width=42, anchor="w").grid(row=2, column=0, sticky="w",
+                                           padx=(SPACING.l, SPACING.s), pady=SPACING.xs)
+    folder_entry = ctk.CTkEntry(control_card, textvariable=folder_var, height=36,
+                                border_width=1, corner_radius=8, fg_color=COL("input_bg"),
+                                border_color=COL("border_strong"), text_color=COL("text_primary"),
+                                font=FONT("body"))
+    folder_entry.grid(row=2, column=1, columnspan=2, sticky="ew",
+                      padx=(0, SPACING.s), pady=SPACING.xs)
+    folder_entry.bind("<FocusIn>", _focus_in)
+    folder_entry.bind("<FocusOut>", _focus_out)
 
     def choose_folder():
-        selected = filedialog.askdirectory(initialdir=folder_var.get() or default_dir)
+        selected = filedialog.askdirectory(initialdir=folder_var.get() or os.path.expanduser("~"))
         if selected:
             folder_var.set(selected)
 
-    folder_btn = make_button(control_card, "浏览", "secondary", width=72, command=choose_folder)
-    folder_btn.grid(row=2, column=3, sticky="e", padx=(0, 18), pady=5)
+    folder_btn = make_button(control_card, "📁 浏览", "secondary", width=72, command=choose_folder)
+    folder_btn.grid(row=2, column=3, sticky="e", padx=(0, SPACING.l), pady=SPACING.xs)
 
     action_row = ctk.CTkFrame(control_card, fg_color="transparent")
-    action_row.grid(row=3, column=0, columnspan=4, sticky="ew", padx=18, pady=(10, 6))
+    action_row.grid(row=3, column=0, columnspan=4, sticky="ew", padx=SPACING.l, pady=(SPACING.s, SPACING.xs))
     action_row.grid_columnconfigure(1, weight=1)
 
     left_actions = ctk.CTkFrame(action_row, fg_color="transparent")
     left_actions.grid(row=0, column=0, sticky="w")
-    parse_btn = make_button(left_actions, "解析列表", "primary", width=118)
-    parse_btn.pack(side="left", padx=(0, 8))
-    cookie_btn = make_button(left_actions, "获取 Cookie", "secondary", width=112)
-    cookie_btn.pack(side="left", padx=(0, 8))
-    clear_cache_btn = make_button(left_actions, "清除缓存", "ghost", width=88)
+    parse_btn = make_button(left_actions, "🔍 解析列表", "primary", width=120)
+    parse_btn.pack(side="left", padx=(0, SPACING.s))
+    cookie_btn = make_button(left_actions, "🔑 获取 Cookie", "secondary", width=120)
+    cookie_btn.pack(side="left", padx=(0, SPACING.s))
+    clear_cache_btn = make_button(left_actions, "🗑 清除缓存", "ghost", width=92)
     clear_cache_btn.pack(side="left")
 
     check_group = ctk.CTkFrame(action_row, fg_color="transparent")
     check_group.grid(row=0, column=2, sticky="e")
-
-    def make_check(parent, text, var):
-        return ctk.CTkCheckBox(
-            parent, text=text, variable=var, font=font(12),
-            checkbox_width=19, checkbox_height=19, border_width=2,
-            corner_radius=4, fg_color=PRIMARY, hover_color=PRIMARY_HOVER,
-            border_color=BORDER_STRONG, text_color=TEXT_PRIMARY
-        )
-
     make_check(check_group, "视频 (mp4)", download_video_var).pack(side="left", padx=(0, 14))
     make_check(check_group, "音频 (m4a)", download_audio_var).pack(side="left", padx=(0, 14))
     make_check(check_group, "封面 (jpg)", download_cover_var).pack(side="left")
 
     quality_section = ctk.CTkFrame(control_card, fg_color="transparent")
-    quality_section.grid(row=4, column=0, columnspan=4, sticky="ew", padx=18, pady=(4, 16))
-    make_label(quality_section, "画质", 11, "bold", TEXT_SECONDARY, width=42, anchor="w").pack(side="left", padx=(0, 10))
+    quality_section.grid(row=4, column=0, columnspan=4, sticky="ew", padx=SPACING.l, pady=(SPACING.xs, SPACING.m))
+    make_label(quality_section, "🎬 画质", "label", "bold", COL("text_secondary"),
+               width=42, anchor="w").pack(side="left", padx=(0, SPACING.s))
     quality_grid = ctk.CTkFrame(quality_section, fg_color="transparent")
     quality_grid.pack(side="left", fill="x", expand=True)
-    quality_hint = make_label(quality_section, "高画质需要登录 Cookie", 10, color=TEXT_DIM)
-    quality_hint.pack(side="right", padx=(8, 0))
+    quality_hint = make_label(quality_section, "高画质需要登录 Cookie", "caption", color=COL("text_dim"))
+    quality_hint.pack(side="right", padx=(SPACING.s, 0))
 
+    # ---------- 内容区（左右分栏） ----------
     content = ctk.CTkFrame(main_frame, fg_color="transparent")
     content.pack(fill="both", expand=True)
     content.grid_columnconfigure(0, weight=3, uniform="main")
     content.grid_columnconfigure(1, weight=2, uniform="main")
     content.grid_rowconfigure(0, weight=1)
 
-    list_card = make_card(content, row=0, column=0, sticky="nsew", padx=(0, 10))
+    list_card = make_card(content, row=0, column=0, sticky="nsew", padx=(0, SPACING.s))
     list_card.grid_columnconfigure(0, weight=1)
     list_card.grid_rowconfigure(1, weight=1)
     list_head = ctk.CTkFrame(list_card, fg_color="transparent")
-    list_head.grid(row=0, column=0, sticky="ew", padx=18, pady=(15, 10))
-    make_label(list_head, "视频列表", 15, "bold").pack(side="left")
-    list_count_label = make_label(list_head, "", 11, color=TEXT_DIM)
+    list_head.grid(row=0, column=0, sticky="ew", padx=SPACING.l, pady=(SPACING.m, SPACING.s))
+    make_label(list_head, "📋 视频列表", "title", "bold").pack(side="left")
+    list_count_label = make_label(list_head, "", "caption", color=COL("text_dim"))
     list_count_label.pack(side="right")
 
-    list_wrap = ctk.CTkScrollableFrame(
-        list_card, corner_radius=8, border_width=1, border_color=BORDER,
-        fg_color=CODE_BG, scrollbar_button_color=BORDER_STRONG,
-        scrollbar_button_hover_color=TEXT_DIM
-    )
-    list_wrap.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 10))
+    list_wrap = ctk.CTkScrollableFrame(list_card, corner_radius=8, border_width=1,
+                                       border_color=COL("border"), fg_color=COL("code"),
+                                       scrollbar_button_color=COL("border_strong"),
+                                       scrollbar_button_hover_color=COL("text_dim"))
+    list_wrap.grid(row=1, column=0, sticky="nsew", padx=SPACING.l, pady=(0, SPACING.s))
     list_wrap.grid_columnconfigure(0, weight=1)
     list_btn_row = ctk.CTkFrame(list_card, fg_color="transparent")
-    list_btn_row.grid(row=2, column=0, sticky="ew", padx=18, pady=(2, 16))
-    download_btn = make_button(list_btn_row, "下载选中视频", "primary", height=40)
+    list_btn_row.grid(row=2, column=0, sticky="ew", padx=SPACING.l, pady=(SPACING.xs, SPACING.m))
+    download_btn = make_button(list_btn_row, "⬇️ 下载选中视频", "primary", height=40)
     download_btn.pack(fill="x")
 
     right_col = ctk.CTkFrame(content, fg_color="transparent")
@@ -1282,130 +1356,152 @@ def launch_gui():
     right_col.grid_rowconfigure(1, weight=1)
     right_col.grid_columnconfigure(0, weight=1)
 
-    task_card = make_card(right_col, row=0, column=0, sticky="nsew", pady=(0, 10))
+    task_card = make_card(right_col, row=0, column=0, sticky="nsew", pady=(0, SPACING.s))
     task_card.grid_columnconfigure(0, weight=1)
     task_card.grid_rowconfigure(1, weight=1)
     task_head = ctk.CTkFrame(task_card, fg_color="transparent")
-    task_head.grid(row=0, column=0, sticky="ew", padx=18, pady=(15, 10))
-    make_label(task_head, "下载任务", 15, "bold").pack(side="left")
-    task_status_label = make_label(task_head, "", 11, color=TEXT_DIM, textvariable=task_count_var)
+    task_head.grid(row=0, column=0, sticky="ew", padx=SPACING.l, pady=(SPACING.m, SPACING.s))
+    make_label(task_head, "📥 下载任务", "title", "bold").pack(side="left")
+    task_status_label = make_label(task_head, "", "caption", color=COL("text_dim"),
+                                   textvariable=task_count_var)
     task_status_label.pack(side="right")
 
-    task_scroll = ctk.CTkScrollableFrame(
-        task_card, corner_radius=8, border_width=1, border_color=BORDER,
-        fg_color=CODE_BG, scrollbar_button_color=BORDER_STRONG,
-        scrollbar_button_hover_color=TEXT_DIM
-    )
-    task_scroll.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 10))
+    task_scroll = ctk.CTkScrollableFrame(task_card, corner_radius=8, border_width=1,
+                                         border_color=COL("border"), fg_color=COL("code"),
+                                         scrollbar_button_color=COL("border_strong"),
+                                         scrollbar_button_hover_color=COL("text_dim"))
+    task_scroll.grid(row=1, column=0, sticky="nsew", padx=SPACING.l, pady=(0, SPACING.s))
     task_scroll.grid_columnconfigure(0, weight=1)
-    task_placeholder = make_label(task_scroll, "选择视频后点击“下载选中视频”\n任务将显示在这里", 11, color=TEXT_DIM, justify="center")
+    task_placeholder = make_label(task_scroll, "选择视频后点击“下载选中视频”\n任务将显示在这里",
+                                  "body", color=COL("text_dim"), justify="center")
     task_placeholder.pack(expand=True, fill="both", pady=42)
 
     task_btn_row = ctk.CTkFrame(task_card, fg_color="transparent")
-    task_btn_row.grid(row=2, column=0, sticky="ew", padx=18, pady=(2, 16))
-    task_download_btn = make_button(task_btn_row, "开始下载", "primary", width=96)
-    task_download_btn.pack(side="left", padx=(0, 6))
-    pause_btn = make_button(task_btn_row, "暂停", "secondary", width=64)
-    pause_btn.pack(side="left", padx=(0, 5))
-    resume_btn = make_button(task_btn_row, "继续", "secondary", width=64)
-    resume_btn.pack(side="left", padx=(0, 5))
-    cancel_btn = make_button(task_btn_row, "取消", "danger", width=64)
-    cancel_btn.pack(side="left", padx=(0, 6))
-    clear_done_btn = make_button(task_btn_row, "清除已完成", "ghost", width=92)
+    task_btn_row.grid(row=2, column=0, sticky="ew", padx=SPACING.l, pady=(SPACING.xs, SPACING.m))
+    task_download_btn = make_button(task_btn_row, "▶ 开始下载", "primary", width=96)
+    task_download_btn.pack(side="left", padx=(0, SPACING.s))
+    pause_btn = make_button(task_btn_row, "⏸ 暂停", "secondary", width=64)
+    pause_btn.pack(side="left", padx=(0, SPACING.xs))
+    resume_btn = make_button(task_btn_row, "▶ 继续", "secondary", width=64)
+    resume_btn.pack(side="left", padx=(0, SPACING.xs))
+    cancel_btn = make_button(task_btn_row, "⛔ 取消", "danger", width=64)
+    cancel_btn.pack(side="left", padx=(0, SPACING.s))
+    clear_done_btn = make_button(task_btn_row, "✓ 清除已完成", "ghost", width=96)
     clear_done_btn.pack(side="right")
 
     log_card = make_card(right_col, row=1, column=0, sticky="nsew")
     log_card.grid_columnconfigure(0, weight=1)
     log_card.grid_rowconfigure(1, weight=1)
     log_head = ctk.CTkFrame(log_card, fg_color="transparent")
-    log_head.grid(row=0, column=0, sticky="ew", padx=18, pady=(15, 10))
-    make_label(log_head, "运行日志", 15, "bold").pack(side="left")
+    log_head.grid(row=0, column=0, sticky="ew", padx=SPACING.l, pady=(SPACING.m, SPACING.s))
+    make_label(log_head, "📜 运行日志", "title", "bold").pack(side="left")
     clear_log_btn = make_button(log_head, "清空", "ghost", width=58, height=28)
     clear_log_btn.pack(side="right")
 
-    log_textbox = ctk.CTkTextbox(
-        log_card, font=ctk.CTkFont(family="Consolas", size=11),
-        corner_radius=8, border_width=1, border_color=BORDER,
-        fg_color=CODE_BG, text_color=TEXT_PRIMARY,
-        activate_scrollbars=True, wrap="word",
-        scrollbar_button_color=BORDER_STRONG,
-        scrollbar_button_hover_color=TEXT_DIM
-    )
-    log_textbox.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 16))
-    log_textbox.tag_config("success", foreground=SUCCESS)
-    log_textbox.tag_config("warning", foreground=WARNING)
-    log_textbox.tag_config("error", foreground=DANGER)
-    log_textbox.tag_config("hyperlink", foreground=PRIMARY, underline=True)
+    log_textbox = ctk.CTkTextbox(log_card, font=ctk.CTkFont(family=MONO_FONT, size=11),
+                                 corner_radius=8, border_width=1, border_color=COL("border"),
+                                 fg_color=COL("code"), text_color=COL("text_primary"),
+                                 activate_scrollbars=True, wrap="word",
+                                 scrollbar_button_color=COL("border_strong"),
+                                 scrollbar_button_hover_color=COL("text_dim"))
+    log_textbox.grid(row=1, column=0, sticky="nsew", padx=SPACING.l, pady=(0, SPACING.m))
+    log_textbox.tag_config("success", foreground=COL("success"))
+    log_textbox.tag_config("warning", foreground=COL("warning"))
+    log_textbox.tag_config("error", foreground=COL("danger"))
+    log_textbox.tag_config("hyperlink", foreground=COL("primary"), underline=True)
 
     status_bar = ctk.CTkFrame(main_frame, fg_color="transparent")
-    status_bar.pack(fill="x", pady=(8, 0))
-    make_label(status_bar, "并发上限 3 个任务", 10, color=TEXT_DIM).pack(side="left")
-    make_label(status_bar, "Bilibili Video Downloader", 10, color=TEXT_DIM).pack(side="right")
+    status_bar.pack(fill="x", pady=(SPACING.s, 0))
+    make_label(status_bar, "⚡ 并发上限 3 个任务", "caption", color=COL("text_dim")).pack(side="left")
+    make_label(status_bar, "Bilibili Video Downloader", "caption", color=COL("text_dim")).pack(side="right")
 
+    # ---------- 动态更新函数 ----------
     def append_log(msg, tag=None):
         text = str(msg)
-        log_textbox.configure(state="normal")
-        pos = 0
-        for match in url_pattern.finditer(text):
-            if match.start() > pos:
-                log_textbox.insert("end", text[pos:match.start()], tag or ())
-            log_textbox.insert("end", match.group(0), "hyperlink")
-            pos = match.end()
-        if pos < len(text):
-            log_textbox.insert("end", text[pos:], tag or ())
-        log_textbox.insert("end", "\n")
-        log_textbox.see("end")
-        log_textbox.configure(state="disabled")
+        try:
+            log_textbox.configure(state="normal")
+            pos = 0
+            for match in url_pattern.finditer(text):
+                if match.start() > pos:
+                    log_textbox.insert("end", text[pos:match.start()], tag or ())
+                log_textbox.insert("end", match.group(0), "hyperlink")
+                pos = match.end()
+            if pos < len(text):
+                log_textbox.insert("end", text[pos:], tag or ())
+            log_textbox.insert("end", "\n")
+            log_textbox.see("end")
+            log_textbox.configure(state="disabled")
+        except Exception:
+            pass
 
     def clear_log():
-        log_textbox.configure(state="normal")
-        log_textbox.delete("1.0", "end")
-        log_textbox.configure(state="disabled")
+        try:
+            log_textbox.configure(state="normal")
+            log_textbox.delete("1.0", "end")
+            log_textbox.configure(state="disabled")
+        except Exception:
+            pass
 
     clear_log_btn.configure(command=clear_log)
 
-    video_checkboxes = []
-    video_option_map = []
+    video_checkboxes = _UI["video_checkboxes"]
+    video_option_map = _UI["video_option_map"]
+    task_widgets = _UI["task_widgets"]
 
     def refresh_video_list(options):
         for w in video_checkboxes:
-            w.destroy()
+            try:
+                w.destroy()
+            except Exception:
+                pass
         video_checkboxes.clear()
         video_option_map.clear()
-
         if not options:
-            placeholder = make_label(list_wrap, "点击“解析列表”加载视频", 11, color=TEXT_DIM, justify="center")
+            placeholder = make_label(list_wrap, "点击“解析列表”加载视频", "body",
+                                     color=COL("text_dim"), justify="center")
             placeholder.pack(expand=True, fill="both", pady=36)
             video_checkboxes.append(placeholder)
             list_count_label.configure(text="")
             return
-
         list_count_label.configure(text=f"共 {len(options)} 个视频")
         for opt in options:
             section_tag = opt.get("section") or ""
             duration_tag = opt.get("duration") or ""
-            row = ctk.CTkFrame(list_wrap, fg_color=PANEL, corner_radius=7, border_width=1, border_color=BORDER)
+            row = ctk.CTkFrame(list_wrap, fg_color=COL("surface"), corner_radius=8,
+                               border_width=1, border_color=COL("border"), cursor="hand2")
             row.pack(fill="x", padx=4, pady=4)
             row.grid_columnconfigure(2, weight=1)
             var = ctk.BooleanVar(value=False)
 
             def update_row(v=var, r=row):
                 selected = bool(v.get())
-                r.configure(fg_color=PRIMARY_SOFT if selected else PANEL, border_color=PRIMARY if selected else BORDER)
+                r.configure(fg_color=COL("primary_soft") if selected else COL("surface"),
+                            border_color=COL("primary") if selected else COL("border"))
 
-            cb = ctk.CTkCheckBox(
-                row, text="", variable=var, command=update_row,
-                width=20, height=20, checkbox_width=19, checkbox_height=19,
-                border_width=2, corner_radius=4, fg_color=PRIMARY,
-                hover_color=PRIMARY_HOVER, border_color=BORDER_STRONG
-            )
+            cb = ctk.CTkCheckBox(row, text="", variable=var, command=update_row,
+                                 width=20, height=20, checkbox_width=19, checkbox_height=19,
+                                 border_width=2, corner_radius=5, fg_color=COL("primary"),
+                                 hover_color=COL("primary_hover"), border_color=COL("border_strong"))
             cb.grid(row=0, column=0, rowspan=2, padx=(10, 8), pady=10, sticky="w")
-            make_label(row, f"{opt['index']:02d}", 11, "bold", PRIMARY, width=34).grid(row=0, column=1, rowspan=2, padx=(0, 8), pady=8)
-            title_lbl = make_label(row, opt.get("title", "未命名视频"), 12, "bold", TEXT_PRIMARY, anchor="w", justify="left")
+            make_label(row, f"{opt['index']:02d}", "body", "bold", COL("primary"), width=34).grid(
+                row=0, column=1, rowspan=2, padx=(0, 8), pady=8)
+            title_lbl = make_label(row, opt.get("title", "未命名视频"), "body", "bold",
+                                   COL("text_primary"), anchor="w", justify="left")
             title_lbl.grid(row=0, column=2, sticky="ew", padx=(0, 10), pady=(8, 1))
             meta = "  ·  ".join(x for x in (section_tag, duration_tag) if x)
-            meta_lbl = make_label(row, meta or "普通视频", 10, color=TEXT_DIM, anchor="w")
+            meta_lbl = make_label(row, meta or "普通视频", "caption", color=COL("text_dim"), anchor="w")
             meta_lbl.grid(row=1, column=2, sticky="ew", padx=(0, 10), pady=(0, 8))
+
+            def on_enter(e, v=var, r=row):
+                if not v.get():
+                    r.configure(fg_color=COL("surface_hover"))
+
+            def on_leave(e, v=var, r=row):
+                if not v.get():
+                    r.configure(fg_color=COL("surface"))
+
+            row.bind("<Enter>", on_enter)
+            row.bind("<Leave>", on_leave)
 
             def toggle_row(event=None, v=var, update=update_row):
                 v.set(not v.get())
@@ -1414,10 +1510,9 @@ def launch_gui():
             row.bind("<Button-1>", toggle_row)
             title_lbl.bind("<Button-1>", toggle_row)
             meta_lbl.bind("<Button-1>", toggle_row)
+            cb.configure(cursor="hand2")
             video_checkboxes.append(row)
             video_option_map.append({"var": var, "option": opt})
-
-    refresh_video_list([])
 
     def select_quality(qid):
         info = state["quality_info"].get(qid)
@@ -1427,19 +1522,21 @@ def launch_gui():
         for q, d in state["quality_info"].items():
             is_sel = (q == qid)
             d["btn"].configure(
-                fg_color=PRIMARY if is_sel else PANEL,
-                hover_color=PRIMARY_HOVER if is_sel else PANEL_HOVER,
-                text_color="#FFFFFF" if is_sel else TEXT_PRIMARY,
-                border_color=PRIMARY if is_sel else BORDER,
+                fg_color=COL("primary") if is_sel else COL("surface"),
+                hover_color=COL("primary_hover") if is_sel else COL("surface_hover"),
+                text_color=COL("text_on_primary") if is_sel else COL("text_primary"),
+                border_color=COL("primary") if is_sel else COL("border"),
                 border_width=1,
             )
 
     def rebuild_quality_buttons():
         for w in list(state["quality_widgets"]):
-            w.destroy()
+            try:
+                w.destroy()
+            except Exception:
+                pass
         state["quality_widgets"].clear()
         state["quality_info"].clear()
-        cookie_present = bool(state["cookie"])
         available = state["available_qualities"]
         quality_checked = bool(state.get("quality_checked"))
         enabled_ids = []
@@ -1447,17 +1544,15 @@ def launch_gui():
             enabled = quality_checked and (qid in available)
             if enabled:
                 enabled_ids.append(qid)
-            btn = ctk.CTkButton(
-                quality_grid, text=qlabel, width=104, height=30,
-                font=font(11, "bold"), corner_radius=7, border_width=1,
-                fg_color=PANEL if enabled else PANEL_SOFT,
-                hover_color=PANEL_HOVER if enabled else PANEL_SOFT,
-                text_color=TEXT_PRIMARY if enabled else TEXT_DISABLED,
-                border_color=BORDER if enabled else "#E2E8F0",
-                state="normal" if enabled else "disabled",
-                command=lambda qid=qid: select_quality(qid)
-            )
-            btn.pack(side="left", padx=(0, 6), pady=3)
+            btn = ctk.CTkButton(quality_grid, text=qlabel, width=96, height=30,
+                                font=FONT("label", "bold"), corner_radius=8, border_width=1,
+                                fg_color=COL("surface") if enabled else COL("surface_soft"),
+                                hover_color=COL("surface_hover") if enabled else COL("surface_soft"),
+                                text_color=COL("text_primary") if enabled else COL("text_disabled"),
+                                border_color=COL("border") if enabled else COL("border"),
+                                state="normal" if enabled else "disabled",
+                                command=lambda qid=qid: select_quality(qid))
+            btn.pack(side="left", padx=(0, SPACING.s), pady=2)
             state["quality_widgets"].append(btn)
             state["quality_info"][qid] = {"btn": btn, "enabled": enabled}
         if enabled_ids:
@@ -1471,45 +1566,51 @@ def launch_gui():
         else:
             quality_hint.configure(text="当前账号或视频没有返回可下载视频流")
 
-    rebuild_quality_buttons()
-
     def update_task_count():
         total = len(state["task_order"])
-        active = sum(1 for tid in state["task_order"] if state["tasks"][tid]["status"] not in ("已完成", "已取消", "失败"))
+        active = sum(1 for tid in state["task_order"]
+                     if state["tasks"][tid]["status"] not in ("已完成", "已取消", "失败"))
         done = total - active
         if total == 0:
             task_count_var.set("准备就绪")
         else:
             task_count_var.set(f"已完成 {done}/{total}  ·  活动 {active}  ·  运行 {state['active_downloads']}/{MAX_CONCURRENT_DOWNLOADS}")
 
-    task_widgets = {}
-
     def refresh_task_row(task_id):
         info = state["tasks"].get(task_id)
         if not info:
             return
-        if task_placeholder.winfo_exists():
-            task_placeholder.pack_forget()
+        try:
+            if task_placeholder.winfo_exists():
+                task_placeholder.pack_forget()
+        except Exception:
+            pass
         w = task_widgets.get(task_id)
         if not w:
-            frame = ctk.CTkFrame(task_scroll, fg_color=PANEL, corner_radius=7, border_width=1, border_color=BORDER)
+            frame = ctk.CTkFrame(task_scroll, fg_color=COL("surface"), corner_radius=8,
+                                border_width=1, border_color=COL("border"))
             frame.pack(fill="x", padx=4, pady=4)
             frame.grid_columnconfigure(0, weight=1)
-            title_lbl = make_label(frame, info["title"], 11, "bold", TEXT_PRIMARY, anchor="w")
+            title_lbl = make_label(frame, info["title"], "body", "bold", COL("text_primary"), anchor="w")
             title_lbl.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=(8, 2))
-            prog = ctk.CTkProgressBar(frame, height=8, corner_radius=4, border_width=0, progress_color=PRIMARY, fg_color=PANEL_SOFT)
+            prog = ctk.CTkProgressBar(frame, height=8, corner_radius=4, border_width=0,
+                                     progress_color=COL("primary"), fg_color=COL("surface_soft"))
             prog.grid(row=1, column=0, sticky="ew", padx=(10, 8), pady=(4, 8))
             prog.set(0.0)
-            status_lbl = make_label(frame, "等待中", 10, color=TEXT_DIM, width=128, anchor="e")
+            status_lbl = make_label(frame, "等待中", "caption", color=COL("text_dim"), width=128, anchor="e")
             status_lbl.grid(row=1, column=1, sticky="e", padx=(0, 10), pady=(4, 8))
             w = {"frame": frame, "title": title_lbl, "progress": prog, "status_label": status_lbl}
             task_widgets[task_id] = w
         percent = float(info.get("percent") or 0)
         w["title"].configure(text=info["title"])
         w["progress"].set(min(1.0, max(0.0, percent / 100.0)))
-        color = {"已完成": SUCCESS, "失败": DANGER, "已取消": TEXT_DIM, "下载中": PRIMARY, "已暂停": WARNING, "等待中": TEXT_DIM}.get(info["status"], TEXT_DIM)
-        w["status_label"].configure(text=f"{info['status']} {int(percent)}%" if percent else info["status"], text_color=color)
-        w["frame"].configure(border_color=color if info["status"] in ("已完成", "失败", "已暂停") else BORDER)
+        color = {"已完成": COL("success"), "失败": COL("danger"), "已取消": COL("text_dim"),
+                 "下载中": COL("primary"), "已暂停": COL("warning"),
+                 "等待中": COL("text_dim")}.get(info["status"], COL("text_dim"))
+        w["status_label"].configure(
+            text=f"{info['status']} {int(percent)}%" if percent else info["status"],
+            text_color=color)
+        w["frame"].configure(border_color=color if info["status"] in ("已完成", "失败", "已暂停") else COL("border"))
         update_task_count()
 
     def maybe_start_next_download():
@@ -1531,11 +1632,14 @@ def launch_gui():
             append_log("请先输入视频链接", "warning")
             return
         append_log(f"正在解析: {url}")
-        parse_btn.configure(state="disabled", text="解析中...")
+        if parse_btn.winfo_exists():
+            parse_btn.configure(state="disabled", text="解析中...")
 
         def parse_thread():
             try:
-                result = fetch_bilibili_video_options(url, cookie_str=state["cookie"], logger=lambda m: root.after(0, lambda m=m: append_log("  " + m)))
+                result = fetch_bilibili_video_options(
+                    url, cookie_str=state["cookie"],
+                    logger=lambda m: root.after(0, lambda m=m: _UI["append_log"]("  " + m)))
                 available = set()
                 parse_bvid = ""
                 parse_cid = ""
@@ -1553,30 +1657,33 @@ def launch_gui():
                     state["parse_cid"] = parse_cid
                     state["available_qualities"] = available
                     state["quality_checked"] = True
-                    refresh_video_list(result["options"])
-                    rebuild_quality_buttons()
+                    _UI["refresh_video_list"](result["options"])
+                    _UI["rebuild_quality_buttons"]()
                     append_log(f"解析完成：找到 {len(result['options'])} 个视频", "success")
                     if result["cover_url"]:
                         append_log("已获取封面地址，可勾选下载封面")
                 root.after(0, apply_result)
             except Exception as e:
-                root.after(0, lambda e=e: append_log(f"解析失败: {e}", "error"))
+                root.after(0, lambda e=e: _UI["append_log"](f"解析失败: {e}", "error"))
             finally:
-                root.after(0, lambda: parse_btn.configure(state="normal", text="解析列表"))
+                root.after(0, lambda: parse_btn.configure(state="normal", text="🔍 解析列表")
+                           if parse_btn.winfo_exists() else None)
         threading.Thread(target=parse_thread, daemon=True).start()
 
     parse_btn.configure(command=do_parse)
 
     def do_get_cookie():
         append_log("正在获取 Cookie...")
-        cookie_btn.configure(state="disabled", text="获取中...")
-        set_cookie_status("获取中", PRIMARY, PRIMARY_SOFT)
+        if cookie_btn.winfo_exists():
+            cookie_btn.configure(state="disabled", text="获取中...")
+        set_cookie_status("获取中", COL("primary"), COL("primary_soft"))
 
         def cookie_thread():
             cookie = auto_get_bilibili_cookie(root_window=root)
             if cookie:
                 is_valid, msg, _ = _validate_bilibili_cookie(cookie)
                 username = msg.split("[")[1].split("]")[0] if "[" in msg else "已登录"
+                state["cookie_user"] = username
                 available = state["available_qualities"]
                 if state["parse_bvid"]:
                     available = fetch_bilibili_qualities(state["parse_bvid"], state["parse_cid"], cookie)
@@ -1584,15 +1691,17 @@ def launch_gui():
                     state["cookie"] = cookie
                     state["available_qualities"] = available
                     state["quality_checked"] = bool(state["parse_bvid"])
-                    set_cookie_status(username if is_valid else "已获取 Cookie", SUCCESS, SUCCESS_SOFT)
+                    set_cookie_status(username if is_valid else "已获取 Cookie",
+                                     COL("success"), COL("success_soft"))
                     append_log(f"Cookie 获取成功: {msg}", "success")
-                    rebuild_quality_buttons()
+                    _UI["rebuild_quality_buttons"]()
                 root.after(0, apply_cookie)
             else:
-                root.after(0, lambda: set_cookie_status("未登录", DANGER, DANGER_SOFT))
+                root.after(0, lambda: set_cookie_status("未登录", COL("danger"), COL("danger_soft")))
                 root.after(0, lambda: append_log("Cookie 获取失败，可能仅能下载低画质", "warning"))
-                root.after(0, rebuild_quality_buttons)
-            root.after(0, lambda: cookie_btn.configure(state="normal", text="获取 Cookie"))
+                root.after(0, _UI["rebuild_quality_buttons"])
+            root.after(0, lambda: cookie_btn.configure(state="normal", text="🔑 获取 Cookie")
+                       if cookie_btn.winfo_exists() else None)
         threading.Thread(target=cookie_thread, daemon=True).start()
 
     cookie_btn.configure(command=do_get_cookie)
@@ -1600,9 +1709,10 @@ def launch_gui():
     def do_clear_cache():
         _clear_cookie_cache()
         state["cookie"] = ""
+        state["cookie_user"] = ""
         state["available_qualities"] = set()
         state["quality_checked"] = False
-        set_cookie_status("未登录", TEXT_DIM, PANEL_SOFT)
+        set_cookie_status("未登录", COL("text_dim"), COL("surface_soft"))
         append_log("Cookie 缓存已清除，请重新解析以刷新未登录可用画质", "warning")
         rebuild_quality_buttons()
 
@@ -1613,8 +1723,10 @@ def launch_gui():
         if not info:
             return
         control = {"pause_event": info["pause_event"], "cancel_event": info["cancel_event"]}
+
         def log(msg):
-            root.after(0, lambda msg=msg: append_log(f"  [{info['seq']}] {msg}"))
+            root.after(0, lambda msg=msg: _UI["append_log"](f"  [{info['seq']}] {msg}"))
+
         def progress(stage, percent=None, detail=""):
             task = state["tasks"].get(task_id)
             if not task:
@@ -1623,25 +1735,26 @@ def launch_gui():
             if percent is not None:
                 task["status"] = "下载中"
                 task["percent"] = percent
-            root.after(0, lambda: refresh_task_row(task_id))
+            root.after(0, lambda: _UI["refresh_task_row"](task_id))
+
         success = download_bilibili_video(
             info["video_url"], cookie_str=info["cookie"], output_dir=info["out_dir"], logger=log,
             selected_option=info["selected_option"], control=control, progress_callback=progress,
-            quality_id=info["quality_id"], want_video=info["want_video"], want_audio=info["want_audio"], cover_url=info["cover_url"]
-        )
+            quality_id=info["quality_id"], want_video=info["want_video"], want_audio=info["want_audio"],
+            cover_url=info["cover_url"])
         def finish_task():
             task = state["tasks"].get(task_id)
             if task:
                 if success:
                     task["status"] = "已完成"
                     task["percent"] = 100.0
-                    append_log(f"  [{task['seq']}] 下载完成", "success")
+                    _UI["append_log"](f"  [{task['seq']}] 下载完成", "success")
                 elif task["status"] != "已取消":
                     task["status"] = "失败"
-                    append_log(f"  [{task['seq']}] 下载失败", "error")
-                refresh_task_row(task_id)
+                    _UI["append_log"](f"  [{task['seq']}] 下载失败", "error")
+                _UI["refresh_task_row"](task_id)
             state["active_downloads"] = max(0, state["active_downloads"] - 1)
-            maybe_start_next_download()
+            _UI["maybe_start_next_download"]()
         root.after(0, finish_task)
 
     def start_download():
@@ -1657,7 +1770,7 @@ def launch_gui():
             return
         cover_url = state["cover_url"] if want_cover else None
         quality_id = state["quality_id"] if want_video else None
-        out_dir = folder_var.get().strip() or default_dir
+        out_dir = folder_var.get().strip() or os.path.join(os.path.expanduser("~"), "Desktop")
         if not os.path.exists(out_dir):
             try:
                 os.makedirs(out_dir)
@@ -1675,7 +1788,8 @@ def launch_gui():
                 "pause_event": pause_event, "cancel_event": threading.Event(),
                 "video_url": selected_option.get("url") or state.get("parsed_url", ""),
                 "out_dir": out_dir, "cookie": state["cookie"], "selected_option": selected_option,
-                "quality_id": quality_id, "want_video": want_video, "want_audio": want_audio, "cover_url": cover_url,
+                "quality_id": quality_id, "want_video": want_video, "want_audio": want_audio,
+                "cover_url": cover_url,
             }
             state["task_queue"].append(task_id)
             refresh_task_row(task_id)
@@ -1728,7 +1842,10 @@ def launch_gui():
             if state["tasks"][tid]["status"] in ("已完成", "已取消", "失败"):
                 w = task_widgets.pop(tid, None)
                 if w:
-                    w["frame"].destroy()
+                    try:
+                        w["frame"].destroy()
+                    except Exception:
+                        pass
                 state["task_order"].remove(tid)
                 state["tasks"].pop(tid, None)
                 if tid in state["task_queue"]:
@@ -1743,17 +1860,66 @@ def launch_gui():
     cancel_btn.configure(command=cancel_all)
     clear_done_btn.configure(command=clear_done)
 
-    set_cookie_status("未登录", TEXT_DIM, PANEL_SOFT)
-    append_log("界面已就绪。")
-    # 启动自检：ffmpeg 可用性（合成音视频必须）
-    _ff_ok, _ff_msg = _check_ffmpeg()
-    append_log(_ff_msg)
-    if not _ff_ok:
-        append_log("⚠️ 警告：缺少 ffmpeg，仅下载音频/封面可正常工作，视频合成会失败。")
-    append_log("粘贴链接 -> 解析列表 -> 勾选视频与下载内容 -> 下载选中视频")
-    append_log("提示：高画质需先获取 Cookie；仅音频/封面可单独下载。")
+    # 注册动态函数，供后台线程 / 重建后调用（避免闭包失效）
+    _UI["append_log"] = append_log
+    _UI["clear_log"] = clear_log
+    _UI["set_cookie_status"] = set_cookie_status
+    _UI["refresh_video_list"] = refresh_video_list
+    _UI["rebuild_quality_buttons"] = rebuild_quality_buttons
+    _UI["refresh_task_row"] = refresh_task_row
+    _UI["update_task_count"] = update_task_count
+    _UI["maybe_start_next_download"] = maybe_start_next_download
+    _UI["download_worker"] = download_worker
 
-    root.mainloop()
+    refresh_video_list([])
+    rebuild_quality_buttons()
+
+    if initial:
+        set_cookie_status("未登录", COL("text_dim"), COL("surface_soft"))
+        append_log("界面已就绪。")
+        _ff_ok, _ff_msg = _check_ffmpeg()
+        append_log(_ff_msg)
+        if not _ff_ok:
+            append_log("⚠️ 警告：缺少 ffmpeg，仅下载音频/封面可正常工作，视频合成会失败。")
+        append_log("粘贴链接 -> 解析列表 -> 勾选视频与下载内容 -> 下载选中视频")
+        append_log("提示：高画质需先获取 Cookie；仅音频/封面可单独下载。")
+
+
+def rebuild_ui():
+    root = _UI["root"]
+    if root is None:
+        return
+    for w in _UI["video_checkboxes"]:
+        try:
+            w.destroy()
+        except Exception:
+            pass
+    _UI["video_checkboxes"].clear()
+    _UI["video_option_map"].clear()
+    for tid, w in list(_UI["task_widgets"].items()):
+        try:
+            w["frame"].destroy()
+        except Exception:
+            pass
+    _UI["task_widgets"].clear()
+    _UI["state"]["quality_widgets"].clear()
+    _UI["state"]["quality_info"].clear()
+    for child in list(root.winfo_children()):
+        try:
+            child.destroy()
+        except Exception:
+            pass
+    build_ui(root, initial=False)
+    _UI["refresh_video_list"](_UI["state"]["video_options"])
+    _UI["rebuild_quality_buttons"]()
+    for tid in _UI["state"]["task_order"]:
+        _UI["refresh_task_row"](tid)
+    _UI["update_task_count"]()
+    if _UI["state"]["cookie"]:
+        _UI["set_cookie_status"](_UI["state"].get("cookie_user") or "已登录",
+                                 COL("success"), COL("success_soft"))
+    else:
+        _UI["set_cookie_status"]("未登录", COL("text_dim"), COL("surface_soft"))
 
 
 if __name__ == "__main__":
