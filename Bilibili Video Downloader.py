@@ -1528,6 +1528,18 @@ def launch_gui():
     list_head = ctk.CTkFrame(list_card, fg_color="transparent")
     list_head.grid(row=0, column=0, sticky="ew", padx=SPACING.l, pady=(SPACING.m, SPACING.s))
     make_label(list_head, "📋 视频列表", "title", "bold").pack(side="left")
+
+    # 全选/取消全选切换按钮
+    select_all_var = ctk.BooleanVar(value=False)
+    select_all_btn = ctk.CTkButton(list_head, text="全选", width=52, height=26,
+                                   font=FONT("caption", "bold"), corner_radius=6,
+                                   fg_color=COL("surface_soft"), hover_color=COL("surface_hover"),
+                                   border_width=1, border_color=COL("border"),
+                                   text_color=COL("text_secondary"),
+                                   command=None)  # command set below after def
+    select_all_btn.pack(side="right", padx=(SPACING.s, 0))
+    _THEMED["ghost_btns"].append(select_all_btn)
+
     list_count_label = make_label(list_head, "", "caption", color=COL("text_dim"))
     list_count_label.pack(side="right")
     _UI_SINGLE["list_count_label"] = list_count_label
@@ -1669,6 +1681,13 @@ def launch_gui():
             list_count_label.configure(text="")
             return
         list_count_label.configure(text=f"共 {len(options)} 个视频")
+        # 重置全选按钮
+        select_all_var.set(False)
+        if select_all_btn.winfo_exists():
+            select_all_btn.configure(text="全选",
+                                   fg_color=COL("surface_soft"),
+                                   text_color=COL("text_secondary"),
+                                   border_color=COL("border"))
         for opt in options:
             section_tag = opt.get("section") or ""
             duration_tag = opt.get("duration") or ""
@@ -1720,6 +1739,37 @@ def launch_gui():
             cb.configure(cursor="hand2")
             video_checkboxes.append(row)
             video_option_map.append({"var": var, "option": opt})
+
+    def toggle_select_all():
+        """全选 / 取消全选 切换。"""
+        new_state = not select_all_var.get()
+        select_all_var.set(new_state)
+        for item in video_option_map:
+            item["var"].set(new_state)
+        # 触发每行的视觉更新
+        for i, row in enumerate(video_checkboxes):
+            try:
+                if i < len(video_option_map) and row.winfo_exists():
+                    var = video_option_map[i]["var"]
+                    selected = bool(var.get())
+                    row.configure(
+                        fg_color=COL("primary_soft") if selected else COL("surface"),
+                        border_color=COL("primary") if selected else COL("border"))
+                    # 同步 checkbox 自身
+                    for child in row.winfo_children():
+                        if isinstance(child, ctk.CTkCheckBox):
+                            child.select() if selected else child.deselect()
+                            break
+            except Exception:
+                pass
+        # 按钮文字切换
+        if select_all_btn.winfo_exists():
+            select_all_btn.configure(text="取消" if new_state else "全选",
+                                   fg_color=COL("primary") if new_state else COL("surface_soft"),
+                                   text_color=COL("text_on_primary") if new_state else COL("text_secondary"),
+                                   border_color=COL("primary") if new_state else COL("border"))
+
+    select_all_btn.configure(command=toggle_select_all)
 
     def select_quality(qid):
         info = state["quality_info"].get(qid)
