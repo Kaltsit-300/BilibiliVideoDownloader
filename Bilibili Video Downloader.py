@@ -1075,28 +1075,28 @@ import types
 #  设计系统：主题 / 字号 / 间距（模块级常量，启动时加载一次）
 # ============================================================
 
-FONT_SCALE = {"display": 24, "title": 15, "label": 11, "body": 12, "caption": 10}
-SPACING = types.SimpleNamespace(xs=4, s=8, m=12, l=18, xl=22)
+FONT_SCALE = {"display": 26, "title": 16, "label": 12, "body": 13, "caption": 11}
+SPACING = types.SimpleNamespace(xs=5, s=10, m=16, l=22, xl=28)
 
 THEME_LIGHT = {
-    "bg": "#F4F6F8", "surface": "#FFFFFF", "surface_soft": "#EEF2F6",
-    "surface_hover": "#E6EDF5", "code": "#F8FAFC", "border": "#D8DEE6",
-    "border_strong": "#B7C2D0", "primary": "#0EA47A", "primary_hover": "#0B8A66",
-    "primary_soft": "#D6F3EA", "success": "#059669", "success_soft": "#D1FAE5",
+    "bg": "#F5F7F8", "surface": "#FFFFFF", "surface_soft": "#EEF2F4",
+    "surface_hover": "#E2EAEC", "code": "#F8FAFB", "border": "#D7DFE1",
+    "border_strong": "#B9C6C9", "primary": "#14B8A6", "primary_hover": "#0D9488",
+    "primary_soft": "#CCFBF1", "success": "#16A34A", "success_soft": "#DCFCE7",
     "warning": "#D97706", "danger": "#DC2626", "danger_hover": "#B91C1C",
-    "danger_soft": "#FEE2E2", "text_primary": "#172033", "text_secondary": "#5B6472",
-    "text_dim": "#8A94A6", "text_disabled": "#A6AFBD", "text_on_primary": "#FFFFFF",
+    "danger_soft": "#FEE2E2", "text_primary": "#1F2937", "text_secondary": "#5C6B76",
+    "text_dim": "#8C9AA5", "text_disabled": "#ADB9C2", "text_on_primary": "#FFFFFF",
     "input_bg": "#FFFFFF",
 }
 THEME_DARK = {
-    "bg": "#0F1419", "surface": "#1A212B", "surface_soft": "#222C38",
-    "surface_hover": "#2B3848", "code": "#141B23", "border": "#2E3A47",
-    "border_strong": "#3D4D5E", "primary": "#2DD4A7", "primary_hover": "#22B68C",
-    "primary_soft": "#11302A", "success": "#34D399", "success_soft": "#0F2E25",
+    "bg": "#0E1714", "surface": "#161F1C", "surface_soft": "#1E2925",
+    "surface_hover": "#283530", "code": "#131C18", "border": "#2E3A35",
+    "border_strong": "#3E4D46", "primary": "#2DD4A7", "primary_hover": "#22B692",
+    "primary_soft": "#0F2E26", "success": "#34D399", "success_soft": "#0F2E25",
     "warning": "#FBBF24", "danger": "#F87171", "danger_hover": "#EF4444",
-    "danger_soft": "#3A1D1D", "text_primary": "#E6EDF3", "text_secondary": "#A3AEBB",
-    "text_dim": "#6B7888", "text_disabled": "#566273", "text_on_primary": "#06231C",
-    "input_bg": "#141B23",
+    "danger_soft": "#3A1D1D", "text_primary": "#E6EDEA", "text_secondary": "#A3B0AB",
+    "text_dim": "#6B7A74", "text_disabled": "#56645F", "text_on_primary": "#041410",
+    "input_bg": "#131C18",
 }
 
 # ---- 持久状态 + 主题控件注册表 ----
@@ -1146,17 +1146,6 @@ def COL(key):
 
 def FONT(role, weight=None):
     return ctk.CTkFont(family=DEFAULT_FONT, size=FONT_SCALE[role], weight=weight)
-
-
-def _on_theme_change(value):
-    if "深色" in value:
-        _UI["appearance"] = "dark"
-        mode = "Dark"
-    else:
-        _UI["appearance"] = "light"
-        mode = "Light"
-    ctk.set_appearance_mode(mode)
-    _apply_theme()
 
 
 def _apply_theme():
@@ -1318,14 +1307,14 @@ def launch_gui():
 
     # ---- 工厂函数（自动注册到 _THEMED） ----
     def make_card(parent, **grid_options):
-        frame = ctk.CTkFrame(parent, fg_color=COL("surface"), corner_radius=10,
+        frame = ctk.CTkFrame(parent, fg_color=COL("surface"), corner_radius=14,
                              border_width=1, border_color=COL("border"))
         _THEMED["cards"].append(frame)
         if grid_options:
             frame.grid(**grid_options)
         return frame
 
-    def make_button(parent, text, kind="primary", width=None, height=34, command=None):
+    def make_button(parent, text, kind="primary", width=None, height=38, command=None):
         if kind == "primary":
             colors = dict(fg_color=COL("primary"), hover_color=COL("primary_hover"),
                           text_color=COL("text_on_primary"))
@@ -1344,7 +1333,7 @@ def launch_gui():
             bucket = "secondary_btns"
         kwargs = dict(master=parent, text=text, height=height, command=command,
                       font=FONT("body", "bold" if kind == "primary" else None),
-                      corner_radius=8, border_width=0, **colors)
+                      corner_radius=10, border_width=0, **colors)
         if width is not None:
             kwargs["width"] = width
         btn = ctk.CTkButton(**kwargs)
@@ -1369,8 +1358,8 @@ def launch_gui():
 
     def make_check(parent, text, var):
         cb = ctk.CTkCheckBox(parent, text=text, variable=var, font=FONT("body"),
-                             checkbox_width=19, checkbox_height=19, border_width=2,
-                             corner_radius=5, fg_color=COL("primary"),
+                             checkbox_width=20, checkbox_height=20, border_width=2,
+                             corner_radius=6, fg_color=COL("primary"),
                              hover_color=COL("primary_hover"),
                              border_color=COL("border_strong"),
                              text_color=COL("text_primary"))
@@ -1418,15 +1407,9 @@ def launch_gui():
     make_label(title_block, "视频 · 音频 · 封面 下载工作台", "caption",
                color=COL("text_secondary")).pack(anchor="w", pady=(2, 0))
 
-    theme_switch = ctk.CTkSegmentedButton(header, values=["☀ 浅色", "🌙 深色"],
-                                          height=30, command=_on_theme_change, font=FONT("label"))
-    theme_switch.set("☀ 浅色" if _UI["appearance"] != "dark" else "🌙 深色")
-    theme_switch.grid(row=0, column=1, sticky="e", padx=(SPACING.m, 0))
-    _UI_SINGLE["theme_switch"] = theme_switch
-
-    cookie_badge = ctk.CTkFrame(header, fg_color=COL("surface_soft"), corner_radius=8,
+    cookie_badge = ctk.CTkFrame(header, fg_color=COL("surface_soft"), corner_radius=10,
                                 border_width=1, border_color=COL("border"))
-    cookie_badge.grid(row=0, column=2, sticky="e", padx=(SPACING.m, 0))
+    cookie_badge.grid(row=0, column=1, sticky="e", padx=(SPACING.m, 0))
     _UI_SINGLE["cookie_badge"] = cookie_badge
     _THEMED["badges"].append(cookie_badge)
 
@@ -1453,8 +1436,8 @@ def launch_gui():
                width=42, anchor="w").grid(row=1, column=0, sticky="w",
                                           padx=(SPACING.l, SPACING.s), pady=SPACING.xs)
     url_entry = ctk.CTkEntry(control_card, textvariable=url_var,
-                             placeholder_text="粘贴 B站视频链接", height=36,
-                             border_width=1, corner_radius=8, fg_color=COL("input_bg"),
+                             placeholder_text="粘贴 B站视频链接", height=40,
+                             border_width=1, corner_radius=10, fg_color=COL("input_bg"),
                              border_color=COL("border_strong"), text_color=COL("text_primary"),
                              placeholder_text_color=COL("text_dim"), font=FONT("body"))
     url_entry.grid(row=1, column=1, columnspan=3, sticky="ew",
@@ -1467,8 +1450,8 @@ def launch_gui():
     make_label(control_card, "目录", "label", "bold", COL("text_secondary"),
                width=42, anchor="w").grid(row=2, column=0, sticky="w",
                                           padx=(SPACING.l, SPACING.s), pady=SPACING.xs)
-    folder_entry = ctk.CTkEntry(control_card, textvariable=folder_var, height=36,
-                                border_width=1, corner_radius=8, fg_color=COL("input_bg"),
+    folder_entry = ctk.CTkEntry(control_card, textvariable=folder_var, height=40,
+                                border_width=1, corner_radius=10, fg_color=COL("input_bg"),
                                 border_color=COL("border_strong"), text_color=COL("text_primary"),
                                 font=FONT("body"))
     folder_entry.grid(row=2, column=1, columnspan=2, sticky="ew",
@@ -1501,9 +1484,12 @@ def launch_gui():
 
     check_group = ctk.CTkFrame(action_row, fg_color="transparent")
     check_group.grid(row=0, column=2, sticky="e")
-    make_check(check_group, "视频 (mp4)", download_video_var).pack(side="left", padx=(0, 14))
-    make_check(check_group, "音频 (m4a)", download_audio_var).pack(side="left", padx=(0, 14))
-    make_check(check_group, "封面 (jpg)", download_cover_var).pack(side="left")
+    check_btn_video = make_check(check_group, "视频 (mp4)", download_video_var)
+    check_btn_video.pack(side="left", padx=(0, 14))
+    check_btn_audio = make_check(check_group, "音频 (m4a)", download_audio_var)
+    check_btn_audio.pack(side="left", padx=(0, 14))
+    check_btn_cover = make_check(check_group, "封面 (jpg)", download_cover_var)
+    check_btn_cover.pack(side="left")
 
     quality_section = ctk.CTkFrame(control_card, fg_color="transparent")
     quality_section.grid(row=4, column=0, columnspan=4, sticky="ew", padx=SPACING.l, pady=(SPACING.xs, SPACING.m))
@@ -1544,7 +1530,7 @@ def launch_gui():
     list_count_label.pack(side="right")
     _UI_SINGLE["list_count_label"] = list_count_label
 
-    list_wrap = ctk.CTkScrollableFrame(list_card, corner_radius=8, border_width=1,
+    list_wrap = ctk.CTkScrollableFrame(list_card, corner_radius=12, border_width=1,
                                        border_color=COL("border"), fg_color=COL("code"),
                                        scrollbar_button_color=COL("border_strong"),
                                        scrollbar_button_hover_color=COL("text_dim"))
@@ -1555,8 +1541,23 @@ def launch_gui():
 
     list_btn_row = ctk.CTkFrame(list_card, fg_color="transparent")
     list_btn_row.grid(row=2, column=0, sticky="ew", padx=SPACING.l, pady=(SPACING.xs, SPACING.m))
-    download_btn = make_button(list_btn_row, "⬇️ 下载选中视频", "primary", height=40)
+    download_btn = make_button(list_btn_row, "⬇️ 下载选中项", "primary", height=40)
     download_btn.pack(fill="x")
+
+    def update_download_btn_text():
+        labels = []
+        if download_video_var.get():
+            labels.append("视频")
+        if download_audio_var.get():
+            labels.append("音频")
+        if download_cover_var.get():
+            labels.append("封面")
+        text = "下载选中项" if not labels else "下载选中" + "+".join(labels)
+        download_btn.configure(text=f"⬇️ {text}")
+
+    for cb in (check_btn_video, check_btn_audio, check_btn_cover):
+        cb.configure(command=update_download_btn_text)
+    update_download_btn_text()
 
     right_col = ctk.CTkFrame(content, fg_color="transparent")
     right_col.grid(row=0, column=1, sticky="nsew")
@@ -1575,7 +1576,7 @@ def launch_gui():
     task_status_label.pack(side="right")
     _UI_SINGLE["task_status_label"] = task_status_label
 
-    task_scroll = ctk.CTkScrollableFrame(task_card, corner_radius=8, border_width=1,
+    task_scroll = ctk.CTkScrollableFrame(task_card, corner_radius=12, border_width=1,
                                          border_color=COL("border"), fg_color=COL("code"),
                                          scrollbar_button_color=COL("border_strong"),
                                          scrollbar_button_hover_color=COL("text_dim"))
@@ -1612,7 +1613,7 @@ def launch_gui():
     clear_log_btn.pack(side="right")
 
     log_textbox = ctk.CTkTextbox(log_card, font=ctk.CTkFont(family=MONO_FONT, size=11),
-                                 corner_radius=8, border_width=1, border_color=COL("border"),
+                                 corner_radius=10, border_width=1, border_color=COL("border"),
                                  fg_color=COL("code"), text_color=COL("text_primary"),
                                  activate_scrollbars=True, wrap="word",
                                  scrollbar_button_color=COL("border_strong"),
@@ -1691,7 +1692,7 @@ def launch_gui():
         for opt in options:
             section_tag = opt.get("section") or ""
             duration_tag = opt.get("duration") or ""
-            row = ctk.CTkFrame(list_wrap, fg_color=COL("surface"), corner_radius=8,
+            row = ctk.CTkFrame(list_wrap, fg_color=COL("surface"), corner_radius=11,
                                border_width=1, border_color=COL("border"), cursor="hand2")
             row.pack(fill="x", padx=4, pady=4)
             row.grid_columnconfigure(2, weight=1)
@@ -1703,8 +1704,8 @@ def launch_gui():
                             border_color=COL("primary") if selected else COL("border"))
 
             cb = ctk.CTkCheckBox(row, text="", variable=var, command=update_row,
-                                 width=20, height=20, checkbox_width=19, checkbox_height=19,
-                                 border_width=2, corner_radius=5, fg_color=COL("primary"),
+                                 width=20, height=20, checkbox_width=20, checkbox_height=20,
+                                 border_width=2, corner_radius=6, fg_color=COL("primary"),
                                  hover_color=COL("primary_hover"), border_color=COL("border_strong"),
                                  text_color=COL("text_primary"))
             cb.grid(row=0, column=0, rowspan=2, padx=(10, 8), pady=10, sticky="w")
@@ -1802,7 +1803,7 @@ def launch_gui():
             if enabled:
                 enabled_ids.append(qid)
             btn = ctk.CTkButton(quality_grid, text=qlabel, width=78, height=30,
-                                font=FONT("label", "bold"), corner_radius=8, border_width=1,
+                                font=FONT("label", "bold"), corner_radius=10, border_width=1,
                                 fg_color=COL("surface") if enabled else COL("surface_soft"),
                                 hover_color=COL("surface_hover") if enabled else COL("surface_soft"),
                                 text_color=COL("text_primary") if enabled else COL("text_disabled"),
@@ -1846,7 +1847,7 @@ def launch_gui():
             pass
         w = task_widgets.get(task_id)
         if not w:
-            frame = ctk.CTkFrame(task_scroll, fg_color=COL("surface"), corner_radius=8,
+            frame = ctk.CTkFrame(task_scroll, fg_color=COL("surface"), corner_radius=11,
                                 border_width=1, border_color=COL("border"))
             frame.pack(fill="x", padx=4, pady=4)
             frame.grid_columnconfigure(0, weight=1)
