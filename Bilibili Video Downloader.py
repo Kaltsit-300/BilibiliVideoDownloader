@@ -439,8 +439,8 @@ def _page_title_from_html(html_data):
     return _safe_filename(title_match.group(1).replace('_哔哩哔哩_bilibili', ''))
 
 
-def _make_video_option(index, title, bvid, cid, duration=None, section_title=""):
-    return {
+def _make_video_option(index, title, bvid, cid, duration=None, section_title="", ep_id=None):
+    option = {
         "index": index,
         "title": _safe_filename(title),
         "bvid": bvid,
@@ -449,6 +449,10 @@ def _make_video_option(index, title, bvid, cid, duration=None, section_title="")
         "section": str(section_title or "").strip(),
         "url": f"https://www.bilibili.com/video/{bvid}" if bvid else "",
     }
+    if ep_id:
+        option["ep_id"] = int(ep_id) if str(ep_id).isdigit() else ep_id
+        option["url"] = f"https://www.bilibili.com/bangumi/play/ep{ep_id}"
+    return option
 
 
 def _append_unique_option(options, seen, option):
@@ -550,6 +554,210 @@ def describe_video_option(option):
     return f"{option['index']:02d}. {section}{option['title']}{duration}"
 
 
+# ============================================================
+# 番剧（bangumi）整季解析
+# ============================================================
+
+_BANGUMI_URL_RE = re.compile(r"bangumi/play/(ep|ss)(\d+)", re.I)
+
+
+def _extract_bangumi_target(url):
+    """从番剧链接识别定位参数：ep 开头按 ep_id，ss 开头按 season_id。"""
+    match = _BANGUMI_URL_RE.search(url or "")
+    if not match:
+        return None
+    return {"kind": match.group(1).lower(), "id": match.group(2)}
+
+
+def _bangumi_episode_title(ep, fallback_index):
+    show_title = str(ep.get("show_title") or "").strip()
+    if show_title:
+        return show_title
+    title = str(ep.get("title") or "").strip()
+    long_title = str(ep.get("long_title") or "").strip()
+    if title and long_title:
+        return f"第{title}话 {long_title}"
+    return title or long_title or f"第{fallback_index}话"
+
+
+def _bangumi_duration(ep):
+    """番剧接口的 duration 是毫秒，普通接口是秒，这里统一成秒。"""
+    duration = ep.get("duration")
+    if not isinstance(duration, (int, float)):
+        return None
+    if duration > 10000:
+        duration = duration / 1000.0
+    return duration
+
+
+def _fetch_bangumi_options(target, cookie_str, emit, url=""):
+    """调用番剧官方 season 接口，一次性拿到整季正片 + 花絮预告的分集列表。
+
+    这是「一次解析整个系列」的核心：番剧页面的 HTML 里只有当前一集，
+    真正的分集清单在 pgc/view/web/season 接口里。
+    """
+    headers = _build_bilibili_headers(
+        url or "https://www.bilibili.com/bangumi/", cookie_str
+    )
+    params = (
+        {"ep_id": target["id"]} if target["kind"] == "ep"
+        else {"season_id": target["id"]}
+    )
+    try:
+        resp = requests.get(
+            "https://api.bilibili.com/pgc/view/web/season",
+            params=params, headers=headers, timeout=20,
+        )
+        data = resp.json()
+    except Exception as e:
+        emit(f"番剧接口请求失败: {e}")
+        return None
+
+    if data.get("code") != 0:
+        emit(f"番剧接口返回错误 (code={data.get('code')}, message={data.get('message')})")
+        return None
+
+    result = data.get("result") or {}
+    episodes = result.get("episodes") or []
+    if not episodes:
+        emit("番剧接口未返回正片剧集，可能是地区限制或链接不是番剧页")
+        return None
+
+    options = []
+    seen = set()
+    for idx, ep in enumerate(episodes, start=1):
+        _append_unique_option(options, seen, _make_video_option(
+            len(options) + 1,
+            _bangumi_episode_title(ep, idx),
+            ep.get("bvid") or "",
+            ep.get("cid"),
+            _bangumi_duration(ep),
+            "正片",
+            ep.get("ep_id") or ep.get("id"),
+        ))
+
+    # 预告 / 花絮 / PV 不计入默认列表，否则「全选」会把十几条花絮一起下走
+    extra_count = 0
+    for section in result.get("section") or []:
+        extra_count += len(section.get("episodes") or [])
+
+    if not options:
+        emit("番剧接口返回的剧集缺少可下载流信息")
+        return None
+
+    season_title = result.get("season_title") or "番剧"
+    emit(f"番剧解析完成：《{season_title}》正片 {len(options)} 集。")
+    if extra_count:
+        emit(f"另有 {extra_count} 条预告 / 花絮未列入列表，需要时可在网页单独复制链接。")
+    cover = result.get("cover") or ""
+    if not cover:
+        for ep in episodes:
+            if ep.get("cover"):
+                cover = ep["cover"]
+                break
+    return {
+        "page_title": _safe_filename(season_title),
+        "source_url": url or f"https://www.bilibili.com/bangumi/play/ep{episodes[0].get('ep_id') or episodes[0].get('id')}",
+        "options": options,
+        "cover_url": cover,
+    }
+
+
+def _request_playurl_data(bvid, cid, cookie_str="", referer_url="", ep_id=None):
+    """统一播放流请求：把普通接口和番剧 pgc 接口都问一遍，取画质更高的一份。
+
+    踩坑记录：番剧场景下 pgc 接口对普通账号只返回 360P/480P，
+    而普通接口（bvid+cid）能给到 720P/1080P。所以不能「pgc 优先」，
+    必须比较两边实际返回的流，否则会拿到低清流而用户选的画质判定失败。
+
+    返回 (data, error_message)。
+    """
+    referer = referer_url or (
+        f"https://www.bilibili.com/video/{bvid}" if bvid else "https://www.bilibili.com"
+    )
+    headers = _build_bilibili_headers(referer, cookie_str)
+
+    attempts = []
+    if bvid:
+        attempts.append((
+            "https://api.bilibili.com/x/player/playurl",
+            {"bvid": bvid, "cid": cid, "qn": 127, "fnval": 4048, "fourk": 1},
+        ))
+    if ep_id:
+        attempts.append((
+            "https://api.bilibili.com/pgc/player/web/playurl",
+            {"ep_id": ep_id, "cid": cid, "qn": 127, "fnval": 4048, "fourk": 1},
+        ))
+
+    best_data = None
+    best_score = -1
+    errors = []
+    for api, params in attempts:
+        try:
+            resp = requests.get(api, params=params, headers=headers, timeout=20)
+            payload = resp.json()
+        except Exception as e:
+            errors.append(f"请求异常: {e}")
+            continue
+        code = payload.get("code")
+        data = payload.get("data") or payload.get("result") or {}
+        if code != 0 or not isinstance(data, dict):
+            errors.append(f"code={code}, message={payload.get('message')}")
+            continue
+        videos = (data.get("dash") or {}).get("video") or []
+        ids = [v.get("id") for v in videos if isinstance(v.get("id"), int)]
+        if ids:
+            score = max(ids)
+        elif data.get("durl"):
+            score = data.get("quality") or 0
+        else:
+            errors.append("接口未返回可下载流")
+            continue
+        if score > best_score:
+            best_data, best_score = data, score
+
+    if best_data is None:
+        return None, "; ".join(errors) or "没有可用的播放接口"
+    return best_data, ""
+
+
+def _probe_quality_point(bvid, cid, cookie_str, ep_id, qn):
+    """探测某个画质是否有渐进流（durl）可下载，返回实际 quality。
+
+    与 _request_playurl_data 一致：普通接口优先，pgc 只作兜底，
+    避免番剧 pgc 接口报出实际下不了的画质。
+    """
+    referer = (
+        f"https://www.bilibili.com/video/{bvid}" if bvid
+        else f"https://www.bilibili.com/bangumi/play/ep{ep_id}"
+    )
+    headers = _build_bilibili_headers(referer, cookie_str)
+
+    endpoints = []
+    if bvid:
+        endpoints.append((
+            "https://api.bilibili.com/x/player/playurl",
+            {"bvid": bvid, "cid": cid, "qn": qn, "fnval": 1, "fourk": 0},
+        ))
+    if ep_id:
+        endpoints.append((
+            "https://api.bilibili.com/pgc/player/web/playurl",
+            {"ep_id": ep_id, "cid": cid, "qn": qn, "fnval": 1, "fourk": 0},
+        ))
+
+    for api, params in endpoints:
+        try:
+            payload = requests.get(api, params=params, headers=headers, timeout=20).json()
+            if payload.get("code") != 0:
+                continue
+            data = payload.get("data") or payload.get("result") or {}
+            if data.get("durl"):
+                return data.get("quality")
+        except Exception:
+            continue
+    return None
+
+
 def _fetch_options_via_api(bvid, cookie_str, emit):
     """降级方案：当页面 __INITIAL_STATE__ 解析失败时，改用 B 站官方 view 接口获取分P列表。
     官方接口比抓取 HTML 更稳定，能有效抵御页面改版导致的解析失败。"""
@@ -595,6 +803,15 @@ def fetch_bilibili_video_options(url, cookie_str="", logger=None):
     if not re.match(r"^https?://", url or ""):
         raise ValueError("链接格式不正确，请粘贴完整的 B站视频链接。")
 
+    # 番剧页：HTML 只有当前一集，必须走 season 接口拿整季列表
+    target = _extract_bangumi_target(url)
+    if target:
+        emit("识别到番剧链接，正在获取整季剧集列表...")
+        bangumi_result = _fetch_bangumi_options(target, cookie_str, emit, url)
+        if bangumi_result:
+            return bangumi_result
+        emit("番剧整季解析失败，回落到单集解析...")
+
     headers = _build_bilibili_headers(url, cookie_str)
     emit("正在解析链接中的视频列表...")
     response = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
@@ -629,42 +846,31 @@ def fetch_bilibili_video_options(url, cookie_str="", logger=None):
     }
 
 
-def fetch_bilibili_qualities(bvid, cid, cookie_str=""):
+def fetch_bilibili_qualities(bvid, cid, cookie_str="", ep_id=None):
     """查询当前账号实际拿到的可下载画质 ID 集合。
 
     DASH 视频流以 dash.video 真实返回为准；未登录低画质有时只返回
     MP4/durl 渐进流，因此再按候选画质探测一次 durl 的实际 quality。
-    不使用 accept_quality 作为可下载依据。
+    不使用 accept_quality 作为可下载依据。番剧传 ep_id 时走 pgc 接口。
     """
     qualities = set()
     try:
-        referer_url = f"https://www.bilibili.com/video/{bvid}" if bvid else "https://www.bilibili.com"
-        headers = _build_bilibili_headers(referer_url, cookie_str)
-        playurl_api = "https://api.bilibili.com/x/player/playurl"
-
-        dash_params = {"bvid": bvid, "cid": cid, "qn": 127, "fnval": 4048, "fourk": 1}
-        dash_resp = requests.get(playurl_api, params=dash_params, headers=headers, timeout=20)
-        dash_json = dash_resp.json()
-        if dash_json.get("code") == 0:
-            videos = dash_json.get("data", {}).get("dash", {}).get("video", []) or []
+        dash_data, _err = _request_playurl_data(bvid, cid, cookie_str, "", ep_id)
+        if dash_data:
+            videos = (dash_data.get("dash") or {}).get("video") or []
             qualities.update(v.get("id") for v in videos if v.get("id") in QUALITY_NAME)
+            if dash_data.get("durl"):
+                quality = dash_data.get("quality")
+                if quality in QUALITY_NAME:
+                    qualities.add(quality)
 
         # MP4/durl 只记录接口实际返回的 quality，避免把展示项误判为可下载。
         # 4 个候选画质并行探测，避免串行等待拖慢解析。
-        def _probe_mp4(qid):
-            try:
-                params = {"bvid": bvid, "cid": cid, "qn": qid, "fnval": 1, "fourk": 0}
-                resp = requests.get(playurl_api, params=params, headers=headers, timeout=20)
-                j = resp.json()
-                if j.get("code") != 0:
-                    return None
-                data = j.get("data", {}) or {}
-                return data.get("quality") if data.get("durl") else None
-            except Exception:
-                return None
-
         with ThreadPoolExecutor(max_workers=4) as ex:
-            for q in ex.map(_probe_mp4, (80, 64, 32, 16)):
+            for q in ex.map(
+                lambda qid: _probe_quality_point(bvid, cid, cookie_str, ep_id, qid),
+                (80, 64, 32, 16),
+            ):
                 if q in QUALITY_NAME:
                     qualities.add(q)
     except Exception:
@@ -803,17 +1009,19 @@ def download_bilibili_video(
         emit("解析失败：缺少 BVID 或 CID，无法请求播放流。")
         return False
 
+    # 番剧集：带 ep_id 时优先走 pgc 播放接口
+    ep_id = selected_option.get("ep_id") if selected_option else None
+
     # ---- 请求播放流 ----
     headers = _build_bilibili_headers(referer_url, cookie_str)
     progress("解析播放流", 2, "请求播放接口")
 
-    playurl_api = "https://api.bilibili.com/x/player/playurl"
-    play_params = {"bvid": bvid, "cid": cid, "qn": 127, "fnval": 4048, "fourk": 1}
     try:
         _wait_if_paused(control)
         _raise_if_cancelled(control)
-        play_resp = requests.get(playurl_api, params=play_params, headers=headers, timeout=20)
-        play_json = play_resp.json()
+        play_data, play_error = _request_playurl_data(
+            bvid, cid, cookie_str, referer_url, ep_id
+        )
     except DownloadCancelled:
         emit("任务已取消。")
         progress("已取消", 0, "已取消")
@@ -822,12 +1030,11 @@ def download_bilibili_video(
         emit(f"请求播放接口失败: {e}")
         return False
 
-    if play_json.get("code") != 0:
-        emit(f"播放接口返回失败: code={play_json.get('code')}, message={play_json.get('message')}")
+    if not play_data:
+        emit(f"播放接口返回失败: {play_error}")
         return False
 
     try:
-        play_data = play_json.get("data", {}) or {}
         dash_data = play_data.get("dash", {}) or {}
         video_list = dash_data.get("video", []) or []
         audio_list = dash_data.get("audio", []) or []
@@ -1132,7 +1339,7 @@ _UI_SINGLE = {
     "url_entry": None, "folder_entry": None,
     "theme_switch": None, "list_wrap": None, "task_scroll": None,
     "quality_hint": None, "list_count_label": None, "task_status_label": None,
-    "task_placeholder": None,
+    "task_placeholder": None, "page": None,
 }
 
 
@@ -1192,6 +1399,13 @@ def _apply_theme():
 
     # 3. 单例控件逐个更新
     s = _UI_SINGLE
+    if s.get("page") is not None:
+        try:
+            s["page"].configure(fg_color=COL("bg"),
+                                scrollbar_button_color=COL("border_strong"),
+                                scrollbar_button_hover_color=COL("text_dim"))
+        except Exception:
+            pass
     if s["cookie_badge"]:
         try:
             s["cookie_badge"].configure(fg_color=COL("surface_soft"), border_color=COL("border"))
@@ -1291,8 +1505,15 @@ def launch_gui():
     }
     ctk.set_appearance_mode(_UI["appearance"])
     root.title("Bilibili Video Downloader")
-    root.geometry("1320x860")
-    root.minsize(1150, 720)
+    # 按屏幕自适应开窗：小屏 / 高缩放系统也能完整显示，超出部分由整页滚动承接
+    screen_w = root.winfo_screenwidth()
+    screen_h = root.winfo_screenheight()
+    win_w = min(1460, max(1000, int(screen_w * 0.88)))
+    win_h = min(1000, max(660, int(screen_h * 0.88)))
+    pos_x = max(0, (screen_w - win_w) // 2)
+    pos_y = max(0, (screen_h - win_h) // 2 - 24)
+    root.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
+    root.minsize(900, 560)
 
     state = _UI["state"]
 
@@ -1393,7 +1614,16 @@ def launch_gui():
     # ================================================================
     #  布局构建
     # ================================================================
-    main_frame = ctk.CTkFrame(root, fg_color="transparent")
+    # 整页垂直滚动容器：窗口不够高时可上下滚动，任务列表与日志不会被压扁
+    page = ctk.CTkScrollableFrame(
+        root, fg_color=COL("bg"), corner_radius=0, border_width=0,
+        scrollbar_button_color=COL("border_strong"),
+        scrollbar_button_hover_color=COL("text_dim"),
+    )
+    page.pack(fill="both", expand=True)
+    _UI_SINGLE["page"] = page
+
+    main_frame = ctk.CTkFrame(page, fg_color="transparent")
     main_frame.pack(fill="both", expand=True, padx=SPACING.xl, pady=(SPACING.l, SPACING.m))
 
     # ---------- Header ----------
@@ -1502,11 +1732,14 @@ def launch_gui():
     _UI_SINGLE["quality_hint"] = quality_hint
 
     # ---------- 内容区（左右分栏） ----------
+    # 高度由内部各滚动区的固定高度撑出，整页由 page 承接滚动，
+    # 这样窗口再小也能滚到任务区与日志区，不会被压扁
     content = ctk.CTkFrame(main_frame, fg_color="transparent")
-    content.pack(fill="both", expand=True)
+    content.pack(fill="x")
     content.grid_columnconfigure(0, weight=3, uniform="main")
     content.grid_columnconfigure(1, weight=2, uniform="main")
     content.grid_rowconfigure(0, weight=1)
+    _UI_SINGLE["content"] = content
 
     list_card = make_card(content, row=0, column=0, sticky="nsew", padx=(0, SPACING.s))
     list_card.grid_columnconfigure(0, weight=1)
@@ -1530,7 +1763,7 @@ def launch_gui():
     list_count_label.pack(side="right")
     _UI_SINGLE["list_count_label"] = list_count_label
 
-    list_wrap = ctk.CTkScrollableFrame(list_card, corner_radius=12, border_width=1,
+    list_wrap = ctk.CTkScrollableFrame(list_card, height=315, corner_radius=12, border_width=1,
                                        border_color=COL("border"), fg_color=COL("code"),
                                        scrollbar_button_color=COL("border_strong"),
                                        scrollbar_button_hover_color=COL("text_dim"))
@@ -1561,8 +1794,8 @@ def launch_gui():
 
     right_col = ctk.CTkFrame(content, fg_color="transparent")
     right_col.grid(row=0, column=1, sticky="nsew")
-    right_col.grid_rowconfigure(0, weight=1)
-    right_col.grid_rowconfigure(1, weight=1)
+    right_col.grid_rowconfigure(0, weight=3)   # 下载任务区占大头
+    right_col.grid_rowconfigure(1, weight=2)   # 运行日志区
     right_col.grid_columnconfigure(0, weight=1)
 
     task_card = make_card(right_col, row=0, column=0, sticky="nsew", pady=(0, SPACING.s))
@@ -1576,7 +1809,7 @@ def launch_gui():
     task_status_label.pack(side="right")
     _UI_SINGLE["task_status_label"] = task_status_label
 
-    task_scroll = ctk.CTkScrollableFrame(task_card, corner_radius=12, border_width=1,
+    task_scroll = ctk.CTkScrollableFrame(task_card, height=250, corner_radius=12, border_width=1,
                                          border_color=COL("border"), fg_color=COL("code"),
                                          scrollbar_button_color=COL("border_strong"),
                                          scrollbar_button_hover_color=COL("text_dim"))
@@ -1612,7 +1845,7 @@ def launch_gui():
     clear_log_btn = make_button(log_head, "清空", "ghost", width=58, height=28)
     clear_log_btn.pack(side="right")
 
-    log_textbox = ctk.CTkTextbox(log_card, font=ctk.CTkFont(family=MONO_FONT, size=11),
+    log_textbox = ctk.CTkTextbox(log_card, height=130, font=ctk.CTkFont(family=MONO_FONT, size=11),
                                  corner_radius=10, border_width=1, border_color=COL("border"),
                                  fg_color=COL("code"), text_color=COL("text_primary"),
                                  activate_scrollbars=True, wrap="word",
@@ -1629,7 +1862,8 @@ def launch_gui():
     status_bar = ctk.CTkFrame(main_frame, fg_color="transparent")
     status_bar.pack(fill="x", pady=(SPACING.s, 0))
     make_label(status_bar, "⚡ 并发上限 3 个任务", "caption", color=COL("text_dim")).pack(side="left")
-    make_label(status_bar, "Bilibili Video Downloader", "caption", color=COL("text_dim")).pack(side="right")
+    make_label(status_bar, "窗口较小时可用鼠标滚轮上下滚动整页", "caption",
+               color=COL("text_dim")).pack(side="right")
 
     # ================================================================
     #  动态更新函数
@@ -1908,7 +2142,8 @@ def launch_gui():
                     opt = result["options"][0]
                     parse_bvid = opt.get("bvid", "")
                     parse_cid = opt.get("cid", "")
-                    available = fetch_bilibili_qualities(parse_bvid, parse_cid, state["cookie"])
+                    available = fetch_bilibili_qualities(
+                        parse_bvid, parse_cid, state["cookie"], ep_id=opt.get("ep_id"))
 
                 def apply_result():
                     state["video_options"] = result["options"]
