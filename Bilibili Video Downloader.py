@@ -931,63 +931,112 @@ def _pick_video_stream(video_list, quality_id, logger):
     return sorted(video_list, key=lambda x: (x.get("id", 0), x.get("bandwidth", 0)), reverse=True)[0]
 
 
+def _stream_candidates(stream):
+    """收集一个流（video/audio/durl）的全部可用下载地址。
+
+    B 站 playurl 会给 baseUrl 和 backupUrl：baseUrl 常被分配到 mcdn.bilivideo.cn
+    这类 P2P 边缘节点，某些网络下会 Read timed out；backupUrl 多为 upos 镜像，
+    通常更稳。因此把所有地址都收集起来，稳定镜像优先、mcdn 放最后。
+    """
+    urls = []
+    for key in ("baseUrl", "base_url", "url"):
+        value = stream.get(key)
+        if isinstance(value, str) and value:
+            urls.append(value)
+            break
+    for key in ("backupUrl", "backup_url"):
+        for value in stream.get(key) or []:
+            if isinstance(value, str) and value:
+                urls.append(value)
+
+    seen = set()
+    unique = []
+    for u in urls:
+        if u in seen:
+            continue
+        seen.add(u)
+        unique.append(u)
+
+    def rank(u):
+        host = u.split("/")[2] if "//" in u else u
+        if "mcdn." in host or "szbdyd" in host:
+            return 2          # P2P 边缘节点，最不稳定，排最后
+        if "upos-" in host or "mirror" in host:
+            return 0          # 云厂商镜像，最稳
+        return 1
+
+    return sorted(unique, key=rank)
+
+
 def _download_to_file(url, path, headers, logger, control, label="下载", progress_cb=None,
-                      max_retries=3):
+                      max_retries=2):
     """流式下载到本地文件，支持暂停/取消与进度回调（progress_cb 接收 0-100）。
 
-    B 站 CDN 在并发下载大文件时偶发中途断流，单次连接失败不代表资源不可用。
-    这里做两件事：断点续传（Range）+ 有限次重试，避免整集任务白跑。
+    url 可以是单个地址，也可以是候选地址列表（按顺序尝试）。
+    单条线路内部做断点续传重试，线路用尽后换下一条，避免 B 站 CDN 单点抖动毁掉整集。
     """
+    urls = [url] if isinstance(url, str) else [u for u in (url or []) if u]
+    if not urls:
+        logger(f"{label}失败: 没有可用下载地址")
+        return False
+
     last_error = ""
-    for attempt in range(1, max_retries + 1):
-        downloaded = os.path.getsize(path) if os.path.exists(path) else 0
-        req_headers = dict(headers)
-        if downloaded:
-            req_headers["Range"] = f"bytes={downloaded}-"
-        try:
-            with requests.get(url, headers=req_headers, stream=True, timeout=(15, 60)) as r:
-                if r.status_code == 416:
-                    # 续传起点已到文件末尾，视为已完成
-                    if progress_cb:
-                        progress_cb(100)
-                    return True
-                if r.status_code not in (200, 206):
-                    r.raise_for_status()
-                if r.status_code == 200 and downloaded:
-                    # 服务器不支持续传，从头覆盖写
-                    downloaded = 0
-                mode = "ab" if downloaded else "wb"
-                content_len = int(r.headers.get("content-length") or 0)
-                total = downloaded + content_len if content_len else 0
-                last = -1
-                with open(path, mode) as f:
-                    for chunk in r.iter_content(chunk_size=1024 * 256):
-                        _wait_if_paused(control)
-                        _raise_if_cancelled(control)
-                        if not chunk:
-                            continue
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        if total:
-                            inner = min(100, int(downloaded * 100 / total))
-                            if inner != last:
-                                last = inner
-                                if progress_cb:
-                                    progress_cb(inner)
-            if total and downloaded < total:
-                raise IOError(f"连接提前结束（{downloaded}/{total} 字节）")
-            return True
-        except DownloadCancelled:
-            raise
-        except Exception as e:
-            last_error = str(e)
-            if attempt >= max_retries:
-                break
-            logger(f"{label}中断，正在续传重试（第 {attempt + 1}/{max_retries} 次）...")
-            # 短退避，同时保持可取消
-            for _ in range(int((1.5 ** attempt) * 10)):
-                _raise_if_cancelled(control)
-                time.sleep(0.1)
+    for line_index, current_url in enumerate(urls, start=1):
+        host = current_url.split("/")[2] if "//" in current_url else current_url
+        for attempt in range(1, max_retries + 1):
+            downloaded = os.path.getsize(path) if os.path.exists(path) else 0
+            req_headers = dict(headers)
+            if downloaded:
+                req_headers["Range"] = f"bytes={downloaded}-"
+            try:
+                with requests.get(current_url, headers=req_headers, stream=True,
+                                  timeout=(15, 45)) as r:
+                    if r.status_code == 416:
+                        # 续传起点已到文件末尾，视为已完成
+                        if progress_cb:
+                            progress_cb(100)
+                        return True
+                    if r.status_code not in (200, 206):
+                        r.raise_for_status()
+                    if r.status_code == 200 and downloaded:
+                        # 服务器不支持续传，从头覆盖写
+                        downloaded = 0
+                    mode = "ab" if downloaded else "wb"
+                    content_len = int(r.headers.get("content-length") or 0)
+                    total = downloaded + content_len if content_len else 0
+                    last = -1
+                    with open(path, mode) as f:
+                        for chunk in r.iter_content(chunk_size=1024 * 256):
+                            _wait_if_paused(control)
+                            _raise_if_cancelled(control)
+                            if not chunk:
+                                continue
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if total:
+                                inner = min(100, int(downloaded * 100 / total))
+                                if inner != last:
+                                    last = inner
+                                    if progress_cb:
+                                        progress_cb(inner)
+                if total and downloaded < total:
+                    raise IOError(f"连接提前结束（{downloaded}/{total} 字节）")
+                return True
+            except DownloadCancelled:
+                raise
+            except Exception as e:
+                last_error = str(e)
+                if attempt >= max_retries:
+                    break
+                logger(f"{label}中断（{host}），正在续传重试（第 {attempt + 1}/{max_retries} 次）...")
+                # 短退避，同时保持可取消
+                for _ in range(int((1.5 ** attempt) * 10)):
+                    _raise_if_cancelled(control)
+                    time.sleep(0.1)
+
+        if line_index < len(urls):
+            logger(f"{label}线路 {host} 不可用，切换到备用线路（{line_index + 1}/{len(urls)}）...")
+
     logger(f"{label}失败: {last_error}")
     return False
 
@@ -1106,13 +1155,13 @@ def download_bilibili_video(
             emit("未拿到音频流，无法下载音频。")
             return False
         best_audio = sorted(audio_list, key=lambda x: x["id"], reverse=True)[0]
-        audio_url = best_audio.get("baseUrl") or best_audio.get("base_url")
+        audio_urls = _stream_candidates(best_audio)
         audio_path = _unique_output_path(desktop_path, f"{title}.m4a")
         try:
             emit("正在下载音频 (m4a) ...")
             progress("下载音频", 5, "连接中")
             ok = _download_to_file(
-                audio_url, audio_path, headers, emit, control, label="音频",
+                audio_urls, audio_path, headers, emit, control, label="音频",
                 progress_cb=lambda p: progress("下载音频", 5 + p * 0.9, f"{int(p)}%")
             )
             if ok and os.path.exists(audio_path):
@@ -1137,11 +1186,11 @@ def download_bilibili_video(
                 available_names = "、".join(QUALITY_NAME.get(q, str(q)) for q in available_ids) or "无"
                 emit(f"当前账号或该视频不支持所选画质【{QUALITY_NAME.get(quality_id, quality_id)}】。实际可下载：{available_names}")
                 return False
-            video_url = target.get("baseUrl") or target.get("base_url")
+            video_urls = _stream_candidates(target)
             video_id = target.get("id")
             best_audio = sorted(audio_list, key=lambda x: x["id"], reverse=True)[0]
-            audio_url = best_audio.get("baseUrl") or best_audio.get("base_url")
-            if not video_url or not audio_url:
+            audio_urls = _stream_candidates(best_audio)
+            if not video_urls or not audio_urls:
                 emit("解析失败：未拿到可用的音视频下载地址。")
                 return False
 
@@ -1158,7 +1207,7 @@ def download_bilibili_video(
 
             def _refresh_streams():
                 """重新请求播放地址：CDN 链接可能过期或当前节点异常，换一份再试。"""
-                nonlocal video_url, audio_url
+                nonlocal video_urls, audio_urls
                 refreshed, _err = _request_playurl_data(bvid, cid, cookie_str, referer_url, ep_id)
                 if not refreshed:
                     return False
@@ -1168,16 +1217,16 @@ def download_bilibili_video(
                 if not new_target or not alist:
                     return False
                 best = sorted(alist, key=lambda x: x["id"], reverse=True)[0]
-                new_video_url = new_target.get("baseUrl") or new_target.get("base_url")
-                new_audio_url = best.get("baseUrl") or best.get("base_url")
-                if not new_video_url or not new_audio_url:
+                new_video_urls = _stream_candidates(new_target)
+                new_audio_urls = _stream_candidates(best)
+                if not new_video_urls or not new_audio_urls:
                     return False
-                video_url, audio_url = new_video_url, new_audio_url
+                video_urls, audio_urls = new_video_urls, new_audio_urls
                 return True
 
             try:
                 ok_video = _download_to_file(
-                    video_url, video_temp, headers, emit, control, label="视频",
+                    video_urls, video_temp, headers, emit, control, label="视频",
                     progress_cb=lambda p: progress("下载视频", 5 + p * 0.45, f"{int(p)}%")
                 )
                 if not ok_video:
@@ -1186,7 +1235,7 @@ def download_bilibili_video(
                         os.remove(video_temp)
                     if _refresh_streams():
                         ok_video = _download_to_file(
-                            video_url, video_temp, headers, emit, control, label="视频",
+                            video_urls, video_temp, headers, emit, control, label="视频",
                             progress_cb=lambda p: progress("下载视频", 5 + p * 0.45, f"{int(p)}%")
                         )
                 if not ok_video:
@@ -1196,7 +1245,7 @@ def download_bilibili_video(
                             os.remove(tmp)
                     return False
                 ok_audio = _download_to_file(
-                    audio_url, audio_temp, headers, emit, control, label="音频",
+                    audio_urls, audio_temp, headers, emit, control, label="音频",
                     progress_cb=lambda p: progress("下载音频", 50 + p * 0.35, f"{int(p)}%")
                 )
                 if not ok_audio:
@@ -1205,7 +1254,7 @@ def download_bilibili_video(
                         os.remove(audio_temp)
                     if _refresh_streams():
                         ok_audio = _download_to_file(
-                            audio_url, audio_temp, headers, emit, control, label="音频",
+                            audio_urls, audio_temp, headers, emit, control, label="音频",
                             progress_cb=lambda p: progress("下载音频", 50 + p * 0.35, f"{int(p)}%")
                         )
                 if not ok_audio:
@@ -1285,16 +1334,16 @@ def download_bilibili_video(
                 return False
 
             video_id = durl_quality or mp4_qid
-            video_url = durl_list[0].get("url") or ""
+            video_urls = _stream_candidates(durl_list[0])
             output_filename = _unique_output_path(desktop_path, f"{title}.mp4")
-            if not video_url:
+            if not video_urls:
                 emit("解析失败：MP4 流没有可用下载地址。")
                 return False
             emit(f"画质【{QUALITY_NAME.get(video_id, video_id)}】| MP4 单文件流开始下载")
             progress("下载视频", 5, "连接中")
             try:
                 ok = _download_to_file(
-                    video_url, output_filename, headers, emit, control, label="视频",
+                    video_urls, output_filename, headers, emit, control, label="视频",
                     progress_cb=lambda p: progress("下载视频", 5 + p * 0.95, f"{int(p)}%")
                 )
                 if ok and os.path.exists(output_filename):
